@@ -14,6 +14,16 @@ export interface AnalysisResult {
   overlaps: OverlapEntry[]
 }
 
+export interface AnalysisOptions {
+  /**
+   * When true, clip paths are applied to shape geometry before overlap
+   * detection so that only visually visible (non-clipped) regions are checked.
+   * When false (default), clip masks are excluded from the shape list but
+   * the full unclipped geometry of each shape is used.
+   */
+  considerClipPaths?: boolean
+}
+
 interface BBoxItem {
   minX: number
   minY: number
@@ -29,7 +39,43 @@ function shapeLabel(item: paper.PathItem, index: number): string {
   return `shape-${index + 1}`
 }
 
-export function analyzeSVG(svgText: string): AnalysisResult {
+/**
+ * Returns the effectively visible portion of a path by intersecting it with
+ * every ancestor clip mask found in the parent hierarchy.
+ */
+function getEffectivePath(
+  path: paper.PathItem,
+  scope: paper.PaperScope,
+): paper.PathItem {
+  const originalName = path.name
+  let effectivePath: paper.PathItem = path
+  let parent = path.parent
+
+  while (parent) {
+    if (
+      parent instanceof scope.Group &&
+      parent.clipped &&
+      parent.firstChild?.clipMask
+    ) {
+      const clipMask = parent.firstChild as paper.PathItem
+      try {
+        const clipped = effectivePath.intersect(clipMask) as paper.PathItem
+        clipped.name = originalName
+        if (effectivePath !== path) effectivePath.remove()
+        effectivePath = clipped
+      } catch {
+        // If intersection fails, keep the current effective path
+      }
+    }
+    parent = parent.parent
+  }
+
+  return effectivePath
+}
+
+export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): AnalysisResult {
+  const { considerClipPaths = false } = options
+
   const canvas = document.createElement('canvas')
   const scope = new paper.PaperScope()
   scope.setup(canvas)
@@ -43,17 +89,44 @@ export function analyzeSVG(svgText: string): AnalysisResult {
     throw new Error('Failed to parse SVG — the file may be empty or malformed.')
   }
 
-  const paths: paper.PathItem[] = []
-  root
-    .getItems({
-      match: (item: paper.Item) =>
-        item instanceof scope.Path || item instanceof scope.CompoundPath,
-    })
-    .forEach((item) => paths.push(item as paper.PathItem))
+  // Collect visible path items, always excluding clip mask items.
+  // Clip mask items (clipMask === true) are invisible shapes used only to
+  // define clipping regions — including them causes false overlaps in areas
+  // with no visible content.
+  //
+  // Note: paper.js sometimes keeps shapes inside clip groups as Shape items
+  // rather than expanding them to Path items. We explicitly include Shape
+  // instances and convert them via toPath() so they participate in
+  // intersection testing.
+  const collected = root.getItems({
+    match: (item: paper.Item) =>
+      (item instanceof scope.Path ||
+        item instanceof scope.CompoundPath ||
+        item instanceof scope.Shape) &&
+      !item.clipMask,
+  })
 
-  if (paths.length === 0) {
+  const rawPaths: paper.PathItem[] = []
+  for (const item of collected) {
+    if (item instanceof scope.Shape) {
+      // Convert to a Path (inserted in the same scene position so that the
+      // parent hierarchy is preserved for clip-mask resolution).
+      const path = (item as paper.Shape).toPath() as paper.PathItem
+      rawPaths.push(path)
+    } else {
+      rawPaths.push(item as paper.PathItem)
+    }
+  }
+
+  if (rawPaths.length === 0) {
     return { totalShapes: 0, overlaps: [] }
   }
+
+  // When considerClipPaths is true, intersect each shape with its ancestor
+  // clip mask(s) so overlap detection only covers visible geometry.
+  const paths: paper.PathItem[] = considerClipPaths
+    ? rawPaths.map((p) => getEffectivePath(p, scope))
+    : rawPaths
 
   const tree = new RBush<BBoxItem>()
   const boxes: BBoxItem[] = paths.map((p, i) => {
@@ -85,8 +158,8 @@ export function analyzeSVG(svgText: string): AnalysisResult {
         overlaps.push({
           shapeAIndex: i,
           shapeBIndex: j,
-          shapeAId: shapeLabel(paths[i], i),
-          shapeBId: shapeLabel(paths[j], j),
+          shapeAId: shapeLabel(rawPaths[i], i),
+          shapeBId: shapeLabel(rawPaths[j], j),
           intersectionPoints: intersections.map((loc) => ({
             x: loc.point.x,
             y: loc.point.y,
@@ -96,5 +169,5 @@ export function analyzeSVG(svgText: string): AnalysisResult {
     }
   }
 
-  return { totalShapes: paths.length, overlaps }
+  return { totalShapes: rawPaths.length, overlaps }
 }
