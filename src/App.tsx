@@ -110,7 +110,7 @@ export default function App() {
               <span className="text-gray-300">|</span>
               <span className="text-sm">
                 Overlapping pairs:{' '}
-                <span className={`font-semibold ${result.overlaps.length > 0 ? 'text-red-600' : 'text-green-600'}`}>....
+                <span className={`font-semibold ${result.overlaps.length > 0 ? 'text-red-600' : 'text-green-600'}`}>
                   {result.overlaps.length}
                 </span>
               </span>
