@@ -177,3 +177,82 @@ describe('totalShapes correctness', () => {
     expect(result.totalShapes).toBe(3)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 13. Clip mask items are excluded from shape analysis (bug fix)
+//     A clipPath's inner path has clipMask=true and must not be counted or
+//     matched as a regular shape — it has no visible content.
+// ---------------------------------------------------------------------------
+describe('SVG with clipPath — clip mask items are excluded', () => {
+  it('does not include clip mask paths in totalShapes or as overlap candidates', () => {
+    // One visible circle clipped by a rect, plus one separate circle.
+    // The clip rect lives inside <defs><clipPath> and must NOT appear as a
+    // shape, so totalShapes should be 2 and the two visible circles should
+    // be the only candidates.
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+        <defs>
+          <clipPath id="clip1">
+            <rect x="0" y="0" width="100" height="200"/>
+          </clipPath>
+        </defs>
+        <circle id="clipped-circle" cx="100" cy="100" r="60" clip-path="url(#clip1)" fill="none" stroke="black"/>
+        <circle id="other-circle" cx="150" cy="100" r="20" fill="none" stroke="black"/>
+      </svg>`
+    const result = analyzeSVG(svg)
+    // Only the two visible circles should be counted; the clipPath rect must be excluded.
+    expect(result.totalShapes).toBe(2)
+    // Both shape IDs should match the explicit SVG ids, not auto-generated names,
+    // confirming that no stray clip mask path was included in the analysis.
+    const allIds = result.overlaps.flatMap((o) => [o.shapeAId, o.shapeBId])
+    const uniqueIds = [...new Set(allIds)]
+    expect(uniqueIds.every((id) => id === 'clipped-circle' || id === 'other-circle')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 14. considerClipPaths option
+//     A circle clipped to the left half (x < 80) should not overlap a shape
+//     placed entirely in the clipped (invisible) right region when clip paths
+//     are considered, but should when they are not.
+//
+//     Geometry: circle cx=100 cy=100 r=60  →  full bounds x=[40,160]
+//               clip rect x=[0,80] keeps only the left arc.
+//               target rect x=[140,180] y=[85,115] straddles the right side
+//               of the unclipped circle boundary (circle at y=85/115 is at
+//               x≈158) so the two outlines DO intersect when unclipped.
+// ---------------------------------------------------------------------------
+describe('considerClipPaths option', () => {
+  it('with considerClipPaths=false reports overlap in unclipped geometry', () => {
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+        <defs>
+          <clipPath id="clip2">
+            <rect x="0" y="0" width="80" height="200"/>
+          </clipPath>
+        </defs>
+        <circle id="big-circle" cx="100" cy="100" r="60" clip-path="url(#clip2)" fill="none" stroke="black"/>
+        <rect id="far-rect" x="140" y="85" width="40" height="30" fill="none" stroke="black"/>
+      </svg>`
+    const resultFull = analyzeSVG(svg, { considerClipPaths: false })
+    // Full circle extends to x≈160 and crosses the rect outline (rect left edge is inside circle,
+    // rect right edge is outside → circle outline intersects rect's top/bottom edges).
+    expect(resultFull.overlaps.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('with considerClipPaths=true reports no overlap outside the clipped region', () => {
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+        <defs>
+          <clipPath id="clip3">
+            <rect x="0" y="0" width="80" height="200"/>
+          </clipPath>
+        </defs>
+        <circle id="big-circle" cx="100" cy="100" r="60" clip-path="url(#clip3)" fill="none" stroke="black"/>
+        <rect id="far-rect" x="140" y="85" width="40" height="30" fill="none" stroke="black"/>
+      </svg>`
+    const resultClipped = analyzeSVG(svg, { considerClipPaths: true })
+    // After applying the clip, the circle only occupies x<80, so no overlap with rect at x=140.
+    expect(resultClipped.overlaps.length).toBe(0)
+  })
+})

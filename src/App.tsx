@@ -13,10 +13,9 @@ export default function App() {
   const [status, setStatus] = useState<Status>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [highlightedPair, setHighlightedPair] = useState<[number, number] | null>(null)
+  const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
 
-  const handleFile = useCallback((text: string, name: string) => {
-    setSvgText(text)
-    setFileName(name)
+  const runAnalysis = useCallback((text: string, clipPaths: boolean) => {
     setResult(null)
     setHighlightedPair(null)
     setStatus('analyzing')
@@ -25,7 +24,7 @@ export default function App() {
     // Run analysis asynchronously so the UI can repaint first
     setTimeout(() => {
       try {
-        const analysis = analyzeSVG(text)
+        const analysis = analyzeSVG(text, { considerClipPaths: clipPaths })
         setResult(analysis)
         setStatus('done')
       } catch (e) {
@@ -34,6 +33,19 @@ export default function App() {
       }
     }, 50)
   }, [])
+
+  const handleFile = useCallback((text: string, name: string) => {
+    setSvgText(text)
+    setFileName(name)
+    runAnalysis(text, considerClipPaths)
+  }, [considerClipPaths, runAnalysis])
+
+  const handleToggleClipPaths = useCallback((value: boolean) => {
+    setConsiderClipPaths(value)
+    if (svgText) {
+      runAnalysis(svgText, value)
+    }
+  }, [svgText, runAnalysis])
 
   const handleReset = () => {
     setSvgText(null)
@@ -114,6 +126,16 @@ export default function App() {
                   {result.overlaps.length}
                 </span>
               </span>
+              <span className="text-gray-300">|</span>
+              <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={considerClipPaths}
+                  onChange={(e) => handleToggleClipPaths(e.target.checked)}
+                  className="w-4 h-4 accent-blue-600 cursor-pointer"
+                />
+                Consider clip paths
+              </label>
             </div>
 
             {/* Viewer + Table side by side on large screens */}
