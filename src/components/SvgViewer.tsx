@@ -85,12 +85,12 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props)
   const highlightedPoints =
     highlightedPair !== null
       ? overlaps
-          .filter(
-            (o) =>
-              o.shapeAIndex === highlightedPair[0] &&
-              o.shapeBIndex === highlightedPair[1],
-          )
-          .flatMap((o) => o.intersectionPoints)
+        .filter(
+          (o) =>
+            o.shapeAIndex === highlightedPair[0] &&
+            o.shapeBIndex === highlightedPair[1],
+        )
+        .flatMap((o) => o.intersectionPoints)
       : []
 
   const highlightedSet = new Set(
@@ -98,10 +98,10 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props)
   )
 
   return (
-    <div ref={containerRef} className="relative w-full h-full overflow-auto">
+    <div ref={containerRef} className="relative w-full h-full overflow-hidden">
       {/* Original SVG rendered inline */}
       <div
-        className="w-full h-full"
+        className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
         dangerouslySetInnerHTML={{ __html: svgText }}
         style={{ lineHeight: 0 }}
       />
