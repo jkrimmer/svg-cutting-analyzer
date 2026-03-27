@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { OverlapEntry } from '../lib/svgAnalyzer'
+import type { ClipPathShape, OverlapEntry } from '../lib/svgAnalyzer'
 
 interface Props {
   svgText: string
   overlaps: OverlapEntry[]
   highlightedPair: [number, number] | null
   outlineMode?: boolean
+  clipPathShapes?: ClipPathShape[]
 }
 
 interface ViewBox {
@@ -53,7 +54,7 @@ function parseViewBox(svgText: string): ViewBox | null {
   return null
 }
 
-export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineMode = false }: Props) {
+export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineMode = false, clipPathShapes }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const [transform, setTransform] = useState<Transform>(INITIAL_TRANSFORM)
@@ -226,6 +227,30 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
           dangerouslySetInnerHTML={{ __html: processedSvg }}
           style={{ lineHeight: 0 }}
         />
+
+        {/* Overlay SVG for clip path shapes (green) when considerClipPaths is enabled */}
+        {containerSize.width > 0 && clipPathShapes && clipPathShapes.length > 0 && viewBox && (
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            width={containerSize.width}
+            height={containerSize.height}
+            viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {clipPathShapes.map((shape, idx) => (
+              <path
+                key={`clip-${idx}-${shape.pathData.slice(0, 32)}`}
+                d={shape.pathData}
+                fill="#22c55e"
+                fillOpacity={0.15}
+                stroke="#16a34a"
+                strokeWidth={1}
+                strokeOpacity={0.7}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
+        )}
 
         {/* Overlay SVG for intersection circles */}
         {containerSize.width > 0 && (
