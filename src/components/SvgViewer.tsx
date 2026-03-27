@@ -241,11 +241,9 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
               <path
                 key={`clip-${idx}-${shape.pathData.slice(0, 32)}`}
                 d={shape.pathData}
-                fill="#22c55e"
-                fillOpacity={0.15}
+                fill="none"
                 stroke="#16a34a"
                 strokeWidth={1}
-                strokeOpacity={0.7}
                 vectorEffect="non-scaling-stroke"
               />
             ))}
