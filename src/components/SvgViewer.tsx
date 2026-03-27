@@ -124,11 +124,12 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!isPanning || !panStart.current) return
+    const { panX, panY, mouseX, mouseY } = panStart.current
     setTransform((prev) => ({
       ...prev,
       pan: {
-        x: panStart.current!.panX + (e.clientX - panStart.current!.mouseX),
-        y: panStart.current!.panY + (e.clientY - panStart.current!.mouseY),
+        x: panX + (e.clientX - mouseX),
+        y: panY + (e.clientY - mouseY),
       },
     }))
   }, [isPanning])
