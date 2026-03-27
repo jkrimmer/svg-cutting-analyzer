@@ -14,7 +14,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [highlightedPair, setHighlightedPair] = useState<[number, number] | null>(null)
   const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
-  const [outlineMode, setOutlineMode] = useState<boolean>(false)
+  const [outlineMode, setOutlineMode] = useState<boolean>(true)
 
   const runAnalysis = useCallback((text: string, clipPaths: boolean) => {
     setResult(null)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { OverlapEntry } from '../lib/svgAnalyzer'
 
 interface Props {
@@ -14,6 +14,13 @@ interface ViewBox {
   width: number
   height: number
 }
+
+interface Transform {
+  zoom: number
+  pan: { x: number; y: number }
+}
+
+const INITIAL_TRANSFORM: Transform = { zoom: 1, pan: { x: 0, y: 0 } }
 
 const OUTLINE_STYLE = '<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: 1 !important; }</style>'
 
@@ -49,7 +56,22 @@ function parseViewBox(svgText: string): ViewBox | null {
 export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineMode = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
+  const [transform, setTransform] = useState<Transform>(INITIAL_TRANSFORM)
+  const transformRef = useRef<Transform>(INITIAL_TRANSFORM)
+  const [isPanning, setIsPanning] = useState(false)
+  const panStart = useRef<{ mouseX: number; mouseY: number; panX: number; panY: number } | null>(null)
 
+  // Keep transformRef in sync with state so the wheel handler (closed over once) always sees fresh values
+  useEffect(() => {
+    transformRef.current = transform
+  }, [transform])
+
+  // Reset view whenever a new SVG is loaded
+  useEffect(() => {
+    setTransform(INITIAL_TRANSFORM)
+  }, [svgText])
+
+  // ResizeObserver for container size
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -62,6 +84,62 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
     })
     obs.observe(el)
     return () => obs.disconnect()
+  }, [])
+
+  // Non-passive wheel listener so we can call preventDefault and prevent page scroll
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1
+      const rect = el.getBoundingClientRect()
+      const cx = e.clientX - rect.left
+      const cy = e.clientY - rect.top
+      const { zoom, pan } = transformRef.current
+      const newZoom = Math.max(0.1, Math.min(20, zoom * factor))
+      setTransform({
+        zoom: newZoom,
+        pan: {
+          x: cx - (cx - pan.x) * (newZoom / zoom),
+          y: cy - (cy - pan.y) * (newZoom / zoom),
+        },
+      })
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    setIsPanning(true)
+    panStart.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      panX: transformRef.current.pan.x,
+      panY: transformRef.current.pan.y,
+    }
+  }, [])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isPanning || !panStart.current) return
+    setTransform((prev) => ({
+      ...prev,
+      pan: {
+        x: panStart.current!.panX + (e.clientX - panStart.current!.mouseX),
+        y: panStart.current!.panY + (e.clientY - panStart.current!.mouseY),
+      },
+    }))
+  }, [isPanning])
+
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false)
+    panStart.current = null
+  }, [])
+
+  const resetView = useCallback(() => {
+    setTransform(INITIAL_TRANSFORM)
   }, [])
 
   const viewBox = parseViewBox(svgText)
@@ -120,43 +198,74 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
     highlightedPoints.map((p) => `${p.x},${p.y}`),
   )
 
-  return (
-    <div ref={containerRef} className="relative w-full h-full overflow-hidden">
-      {/* Original SVG rendered inline */}
-      <div
-        className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
-        dangerouslySetInnerHTML={{ __html: processedSvg }}
-        style={{ lineHeight: 0 }}
-      />
+  const isTransformed = transform.zoom !== 1 || transform.pan.x !== 0 || transform.pan.y !== 0
 
-      {/* Overlay SVG for intersection circles */}
-      {containerSize.width > 0 && (
-        <svg
-          className="absolute inset-0 pointer-events-none"
-          width={containerSize.width}
-          height={containerSize.height}
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full h-full overflow-hidden"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
+    >
+      {/* Transform wrapper for zoom/pan */}
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          transform: `translate(${transform.pan.x}px, ${transform.pan.y}px) scale(${transform.zoom})`,
+          transformOrigin: '0 0',
+        }}
+      >
+        {/* Original SVG rendered inline */}
+        <div
+          className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
+          dangerouslySetInnerHTML={{ __html: processedSvg }}
+          style={{ lineHeight: 0 }}
+        />
+
+        {/* Overlay SVG for intersection circles */}
+        {containerSize.width > 0 && (
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            width={containerSize.width}
+            height={containerSize.height}
+          >
+            {overlaps.flatMap((entry) =>
+              entry.intersectionPoints.map((pt, idx) => {
+                const key = `${pt.x},${pt.y}`
+                const isHighlighted = highlightedSet.has(key)
+                const isDimmed = highlightedPair !== null && !isHighlighted
+                const { px, py } = toPixel(pt.x, pt.y)
+                return (
+                  <circle
+                    key={`${entry.shapeAIndex}-${entry.shapeBIndex}-${idx}`}
+                    cx={px}
+                    cy={py}
+                    r={isHighlighted ? 8 : 6}
+                    fill={isHighlighted ? '#f59e0b' : '#ef4444'}
+                    fillOpacity={isDimmed ? 0.25 : 0.6}
+                    stroke={isHighlighted ? '#d97706' : '#b91c1c'}
+                    strokeWidth={1.5}
+                  />
+                )
+              }),
+            )}
+          </svg>
+        )}
+      </div>
+
+      {/* Reset view button — only visible when the view has been transformed */}
+      {isTransformed && (
+        <button
+          className="absolute bottom-2 right-2 z-10 bg-white border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 shadow-sm"
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
+          onClick={resetView}
         >
-          {overlaps.flatMap((entry) =>
-            entry.intersectionPoints.map((pt, idx) => {
-              const key = `${pt.x},${pt.y}`
-              const isHighlighted = highlightedSet.has(key)
-              const isDimmed = highlightedPair !== null && !isHighlighted
-              const { px, py } = toPixel(pt.x, pt.y)
-              return (
-                <circle
-                  key={`${entry.shapeAIndex}-${entry.shapeBIndex}-${idx}`}
-                  cx={px}
-                  cy={py}
-                  r={isHighlighted ? 8 : 6}
-                  fill={isHighlighted ? '#f59e0b' : '#ef4444'}
-                  fillOpacity={isDimmed ? 0.25 : 0.6}
-                  stroke={isHighlighted ? '#d97706' : '#b91c1c'}
-                  strokeWidth={1.5}
-                />
-              )
-            }),
-          )}
-        </svg>
+          Reset view
+        </button>
       )}
     </div>
   )
