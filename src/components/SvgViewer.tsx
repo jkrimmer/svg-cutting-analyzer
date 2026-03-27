@@ -5,6 +5,7 @@ interface Props {
   svgText: string
   overlaps: OverlapEntry[]
   highlightedPair: [number, number] | null
+  outlineMode?: boolean
 }
 
 interface ViewBox {
@@ -12,6 +13,20 @@ interface ViewBox {
   y: number
   width: number
   height: number
+}
+
+const OUTLINE_STYLE = '<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: 1 !important; }</style>'
+
+/** Injects a viewBox attribute into older SVGs that only declare width/height. */
+function ensureViewBox(svgText: string): string {
+  if (/\bviewBox=/i.test(svgText)) return svgText
+  const wMatch = svgText.match(/\bwidth=["']([0-9.]+)["']/)
+  const hMatch = svgText.match(/\bheight=["']([0-9.]+)["']/)
+  if (!wMatch || !hMatch) return svgText
+  const w = parseFloat(wMatch[1])
+  const h = parseFloat(hMatch[1])
+  if (isNaN(w) || isNaN(h)) return svgText
+  return svgText.replace(/(<svg\b)/, `$1 viewBox="0 0 ${w} ${h}"`)
 }
 
 function parseViewBox(svgText: string): ViewBox | null {
@@ -31,7 +46,7 @@ function parseViewBox(svgText: string): ViewBox | null {
   return null
 }
 
-export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props) {
+export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineMode = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
 
@@ -81,6 +96,14 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props)
     py: (y - (viewBox?.y ?? 0)) * scaleY + offsetY,
   })
 
+  // Step 1: ensure older SVGs (width/height only) have a viewBox so the browser scales them correctly
+  const svgWithViewBox = ensureViewBox(svgText)
+
+  // Step 2: in outline mode inject a <style> block that strips fills and shows strokes only
+  const processedSvg = outlineMode
+    ? svgWithViewBox.replace(/(<svg\b[^>]*>)/, `$1${OUTLINE_STYLE}`)
+    : svgWithViewBox
+
   // Collect highlighted intersection points
   const highlightedPoints =
     highlightedPair !== null
@@ -102,7 +125,7 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props)
       {/* Original SVG rendered inline */}
       <div
         className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
-        dangerouslySetInnerHTML={{ __html: svgText }}
+        dangerouslySetInnerHTML={{ __html: processedSvg }}
         style={{ lineHeight: 0 }}
       />
 
