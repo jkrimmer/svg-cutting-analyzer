@@ -5,6 +5,7 @@ interface Props {
   svgText: string
   overlaps: OverlapEntry[]
   highlightedPair: [number, number] | null
+  outlineMode?: boolean
 }
 
 interface ViewBox {
@@ -31,7 +32,7 @@ function parseViewBox(svgText: string): ViewBox | null {
   return null
 }
 
-export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props) {
+export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineMode = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
 
@@ -81,6 +82,12 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props)
     py: (y - (viewBox?.y ?? 0)) * scaleY + offsetY,
   })
 
+  // In outline mode inject a <style> block that strips fills and shows strokes only
+  const OUTLINE_STYLE = '<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: 1 !important; }</style>'
+  const processedSvg = outlineMode
+    ? svgText.replace(/(<svg\b[^>]*>)/, `$1${OUTLINE_STYLE}`)
+    : svgText
+
   // Collect highlighted intersection points
   const highlightedPoints =
     highlightedPair !== null
@@ -102,7 +109,7 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair }: Props)
       {/* Original SVG rendered inline */}
       <div
         className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
-        dangerouslySetInnerHTML={{ __html: svgText }}
+        dangerouslySetInnerHTML={{ __html: processedSvg }}
         style={{ lineHeight: 0 }}
       />
 

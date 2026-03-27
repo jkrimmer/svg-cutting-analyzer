@@ -14,6 +14,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [highlightedPair, setHighlightedPair] = useState<[number, number] | null>(null)
   const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
+  const [outlineMode, setOutlineMode] = useState<boolean>(false)
 
   const runAnalysis = useCallback((text: string, clipPaths: boolean) => {
     setResult(null)
@@ -136,6 +137,16 @@ export default function App() {
                 />
                 Consider clip paths
               </label>
+              <span className="text-gray-300">|</span>
+              <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={outlineMode}
+                  onChange={(e) => setOutlineMode(e.target.checked)}
+                  className="w-4 h-4 accent-blue-600 cursor-pointer"
+                />
+                Outline mode
+              </label>
             </div>
 
             {/* Viewer + Table side by side on large screens */}
@@ -147,6 +158,7 @@ export default function App() {
                     svgText={svgText}
                     overlaps={result.overlaps}
                     highlightedPair={highlightedPair}
+                    outlineMode={outlineMode}
                   />
                 </div>
               </div>
