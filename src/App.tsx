@@ -159,6 +159,7 @@ export default function App() {
                     overlaps={result.overlaps}
                     highlightedPair={highlightedPair}
                     outlineMode={outlineMode}
+                    clipPathShapes={result.clipPathShapes}
                   />
                 </div>
               </div>

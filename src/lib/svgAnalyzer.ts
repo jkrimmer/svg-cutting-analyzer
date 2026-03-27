@@ -9,9 +9,20 @@ export interface OverlapEntry {
   intersectionPoints: { x: number; y: number }[]
 }
 
+export interface ClipPathShape {
+  /** SVG path data string (in SVG document coordinate space). */
+  pathData: string
+}
+
 export interface AnalysisResult {
   totalShapes: number
   overlaps: OverlapEntry[]
+  /**
+   * Clip path shapes collected when `considerClipPaths` is enabled.
+   * Each entry holds the SVG path data of one clip mask so that the viewer
+   * can render the clip regions visually (e.g. in green).
+   */
+  clipPathShapes?: ClipPathShape[]
 }
 
 export interface AnalysisOptions {
@@ -182,5 +193,34 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
     }
   }
 
-  return { totalShapes: rawPaths.length, overlaps }
+  // When considerClipPaths is enabled, collect each clip mask's geometry so
+  // the viewer can render the clipping regions visually (e.g. highlighted in
+  // green). Clip mask items are invisible by design, so we must query for them
+  // explicitly (they are excluded from `rawPaths` above).
+  let clipPathShapes: ClipPathShape[] | undefined
+  if (considerClipPaths) {
+    const clipMaskItems = root.getItems({
+      match: (item: paper.Item) => {
+        if (!item.clipMask) return false
+        return (
+          item instanceof scope.Path ||
+          item instanceof scope.CompoundPath ||
+          item instanceof scope.Shape
+        )
+      },
+    })
+    clipPathShapes = clipMaskItems.map((item) => {
+      const isShape = item instanceof scope.Shape
+      const pathItem = isShape
+        ? (item as paper.Shape).toPath() as paper.PathItem
+        : (item as paper.PathItem)
+      const pathData = pathItem.pathData
+      // Remove the temporary path created by toPath() to avoid leaking it
+      // into the Paper.js project.
+      if (isShape) pathItem.remove()
+      return { pathData }
+    })
+  }
+
+  return { totalShapes: rawPaths.length, overlaps, clipPathShapes }
 }
