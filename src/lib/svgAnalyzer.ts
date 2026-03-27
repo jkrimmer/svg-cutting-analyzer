@@ -99,11 +99,24 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
   // instances and convert them via toPath() so they participate in
   // intersection testing.
   const collected = root.getItems({
-    match: (item: paper.Item) =>
-      (item instanceof scope.Path ||
+    match: (item: paper.Item) => {
+      // 1. Exclude clip masks
+      if (item.clipMask) return false
+
+      // 2. Exclude hidden shapes (Inkscape wouldn't show these)
+      if (!item.visible) return false
+
+      // 3. CRITICAL: Exclude sub-paths that belong to a CompoundPath.
+      // We only want the parent CompoundPath to participate in the intersection test.
+      if (item.parent instanceof scope.CompoundPath) return false
+
+      // 4. Match the actual drawing primitives
+      return (
+        item instanceof scope.Path ||
         item instanceof scope.CompoundPath ||
-        item instanceof scope.Shape) &&
-      !item.clipMask,
+        item instanceof scope.Shape
+      )
+    },
   })
 
   const rawPaths: paper.PathItem[] = []
