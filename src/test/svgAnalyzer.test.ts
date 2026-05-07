@@ -178,8 +178,10 @@ describe('totalShapes correctness', () => {
     ])
     const result = analyzeSVG(svg)
     expect(result.totalShapes).toBe(3)
-    expect(result.populatedWidth).toBeCloseTo(160, 5)
-    expect(result.populatedHeight).toBeCloseTo(160, 5)
+    // Shapes span x=[20,180] and y=[20,180] in SVG user units (CSS px at 96 DPI).
+    // Expected in mm: 160 px × (25.4/96) ≈ 42.33 mm.
+    expect(result.populatedWidth).toBeCloseTo(160 * (25.4 / 96), 1)
+    expect(result.populatedHeight).toBeCloseTo(160 * (25.4 / 96), 1)
     expect(result.totalOutlineLength).toBeGreaterThan(0)
   })
 })
@@ -260,5 +262,24 @@ describe('considerClipPaths option', () => {
     const resultClipped = analyzeSVG(svg, { considerClipPaths: true })
     // After applying the clip, the circle only occupies x<80, so no overlap with rect at x=140.
     expect(resultClipped.overlaps.length).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 15. SVG with explicit mm width + viewBox — dimension conversion correctness
+//     The SVG viewport is declared as 100mm wide with a 200-unit viewBox.
+//     A rect fills the left half of the viewBox (100 user units = 50 mm).
+// ---------------------------------------------------------------------------
+describe('SVG dimension unit conversion (mm width + viewBox)', () => {
+  it('reports populatedWidth in mm, not raw user units', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 200 200">
+      <rect x="0" y="0" width="100" height="200" fill="none" stroke="black"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    // 100 viewBox units / 200 viewBox total = 50 mm of the 100 mm viewport
+    expect(result.populatedWidth).toBeCloseTo(50, 1)
+    // Full height: 200 viewBox units = 100 mm
+    expect(result.populatedHeight).toBeCloseTo(100, 1)
+    expect(result.totalOutlineLength).toBeGreaterThan(0)
   })
 })

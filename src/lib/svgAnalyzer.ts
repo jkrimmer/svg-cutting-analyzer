@@ -46,6 +46,58 @@ interface BBoxItem {
   index: number
 }
 
+/**
+ * Converts a CSS/SVG length value string (e.g. "50mm", "2in", "200", "200px")
+ * to millimetres.  Unit-less values are treated as CSS pixels (1 px = 25.4/96 mm).
+ */
+function parseLengthToMm(attr: string): number | null {
+  const m = attr.trim().match(/^([+-]?[0-9]*\.?[0-9]+)\s*(mm|cm|in|px|pt|pc)?$/)
+  if (!m) return null
+  const num = parseFloat(m[1])
+  if (isNaN(num)) return null
+  const unit = m[2] ?? 'px'
+  switch (unit) {
+    case 'mm': return num
+    case 'cm': return num * 10
+    case 'in': return num * 25.4
+    case 'pt': return num * (25.4 / 72)
+    case 'pc': return num * (25.4 / 6)
+    case 'px':
+    default:   return num * (25.4 / 96)
+  }
+}
+
+/**
+ * Returns the scale factor (mm per paper.js unit) by reading the SVG's
+ * declared `width` attribute.
+ *
+ * Paper.js interprets the SVG viewport using only the *numeric* part of the
+ * `width` attribute (e.g. the "100" in "100mm"), ignoring the CSS unit, and
+ * scales any `viewBox` to fit that numeric viewport.  Therefore
+ * `path.bounds` values are in "numeric-viewport units", and converting them
+ * to mm simply requires multiplying by the mm equivalent of one declared-unit:
+ *   mmPerUnit = parseLengthToMm(widthAttr) / parseFloat(widthAttr)
+ *
+ * Examples:
+ *   width="50mm"  → 50mm/50  = 1.0  mm per unit
+ *   width="200"   → 52.9mm/200 = 25.4/96  mm per unit  (CSS px default)
+ *   width="2in"   → 50.8mm/2  = 25.4  mm per unit
+ */
+function computeMmPerUnit(svgText: string): number {
+  const FALLBACK = 25.4 / 96  // 1 CSS pixel in mm
+
+  const wMatch = svgText.match(/\bwidth=["']([^"']+)["']/)
+  if (wMatch) {
+    const widthMm = parseLengthToMm(wMatch[1])
+    const rawNum = parseFloat(wMatch[1])
+    if (widthMm !== null && !isNaN(rawNum) && rawNum > 0) {
+      return widthMm / rawNum
+    }
+  }
+
+  return FALLBACK
+}
+
 function shapeLabel(item: paper.PathItem, index: number): string {
   if (item.name && item.name.trim() !== '') return item.name.trim()
   const dataId = (item as unknown as { data?: { id?: string } }).data?.id
@@ -167,6 +219,9 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
   let maxY = Number.NEGATIVE_INFINITY
   let totalOutlineLength = 0
 
+  // Compute the mm-per-user-unit scale before traversing paths.
+  const mmPerUnit = computeMmPerUnit(svgText)
+
   for (const path of paths) {
     const b = path.bounds
     minX = Math.min(minX, b.left)
@@ -174,14 +229,14 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
     maxX = Math.max(maxX, b.right)
     maxY = Math.max(maxY, b.bottom)
     if (path instanceof scope.Path || path instanceof scope.CompoundPath) {
-      totalOutlineLength += path.length
+      totalOutlineLength += path.length * mmPerUnit
     }
   }
 
   const populatedWidth =
-    Number.isFinite(minX) && Number.isFinite(maxX) ? Math.max(0, maxX - minX) : 0
+    Number.isFinite(minX) && Number.isFinite(maxX) ? Math.max(0, maxX - minX) * mmPerUnit : 0
   const populatedHeight =
-    Number.isFinite(minY) && Number.isFinite(maxY) ? Math.max(0, maxY - minY) : 0
+    Number.isFinite(minY) && Number.isFinite(maxY) ? Math.max(0, maxY - minY) * mmPerUnit : 0
 
   const tree = new RBush<BBoxItem>()
   const boxes: BBoxItem[] = paths.map((p, i) => {
