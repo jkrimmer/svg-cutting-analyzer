@@ -51,6 +51,9 @@ interface BBoxItem {
  * to millimetres.  Unit-less values are treated as CSS pixels (1 px = 25.4/96 mm).
  */
 function parseLengthToMm(attr: string): number | null {
+  // Matches optional leading sign, digits/decimals, optional CSS unit.
+  // Valid inputs: "50mm", "2.5in", "200", "200px", "+3.14pt".
+  // Scientific notation (e.g. "1e3mm") is not supported.
   const m = attr.trim().match(/^([+-]?[0-9]*\.?[0-9]+)\s*(mm|cm|in|px|pt|pc)?$/)
   if (!m) return null
   const num = parseFloat(m[1])

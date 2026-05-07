@@ -22,6 +22,10 @@ function formatDuration(totalSeconds: number): string {
   return `${remainingSeconds}s`
 }
 
+/** Maximum machine bed dimension in mm. A warning is shown when the populated
+ *  area exceeds this limit in both axes simultaneously. */
+const MAX_SAFE_DIMENSION_MM = 460
+
 export default function App() {
   const [svgText, setSvgText] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string>('')
@@ -130,7 +134,7 @@ export default function App() {
         {status === 'done' && svgText && result && (
           <div className="flex flex-col gap-6">
             {(() => {
-              const showSizeWarning = result.populatedWidth > 460 && result.populatedHeight > 460
+              const showSizeWarning = result.populatedWidth > MAX_SAFE_DIMENSION_MM && result.populatedHeight > MAX_SAFE_DIMENSION_MM
               const safeVelocity = cuttingVelocity > 0 ? cuttingVelocity : null
               const expectedCuttingTime = safeVelocity
                 ? result.totalOutlineLength / safeVelocity
@@ -171,7 +175,7 @@ export default function App() {
                   </div>
                   {showSizeWarning && (
                     <div className="mt-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm">
-                      Warning: populated width and height both exceed 460 mm.
+                      Warning: populated width and height both exceed {MAX_SAFE_DIMENSION_MM} mm.
                     </div>
                   )}
                 </div>
