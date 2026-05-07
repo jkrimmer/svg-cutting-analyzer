@@ -131,6 +131,9 @@ describe('empty SVG', () => {
     const result = analyzeSVG('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
     expect(result.totalShapes).toBe(0)
     expect(result.overlaps.length).toBe(0)
+    expect(result.populatedWidth).toBe(0)
+    expect(result.populatedHeight).toBe(0)
+    expect(result.totalOutlineLength).toBe(0)
   })
 })
 
@@ -175,6 +178,9 @@ describe('totalShapes correctness', () => {
     ])
     const result = analyzeSVG(svg)
     expect(result.totalShapes).toBe(3)
+    expect(result.populatedWidth).toBeCloseTo(140, 5)
+    expect(result.populatedHeight).toBeCloseTo(140, 5)
+    expect(result.totalOutlineLength).toBeGreaterThan(0)
   })
 })
 

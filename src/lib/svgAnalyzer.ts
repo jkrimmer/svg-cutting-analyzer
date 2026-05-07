@@ -17,6 +17,9 @@ export interface ClipPathShape {
 export interface AnalysisResult {
   totalShapes: number
   overlaps: OverlapEntry[]
+  populatedWidth: number
+  populatedHeight: number
+  totalOutlineLength: number
   /**
    * Clip path shapes collected when `considerClipPaths` is enabled.
    * Each entry holds the SVG path data of one clip mask so that the viewer
@@ -143,7 +146,13 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
   }
 
   if (rawPaths.length === 0) {
-    return { totalShapes: 0, overlaps: [] }
+    return {
+      totalShapes: 0,
+      overlaps: [],
+      populatedWidth: 0,
+      populatedHeight: 0,
+      totalOutlineLength: 0,
+    }
   }
 
   // When considerClipPaths is true, intersect each shape with its ancestor
@@ -151,6 +160,26 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
   const paths: paper.PathItem[] = considerClipPaths
     ? rawPaths.map((p) => getEffectivePath(p, scope))
     : rawPaths
+
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let totalOutlineLength = 0
+
+  for (const path of paths) {
+    const b = path.bounds
+    minX = Math.min(minX, b.left)
+    minY = Math.min(minY, b.top)
+    maxX = Math.max(maxX, b.right)
+    maxY = Math.max(maxY, b.bottom)
+    totalOutlineLength += path.length
+  }
+
+  const populatedWidth =
+    Number.isFinite(minX) && Number.isFinite(maxX) ? Math.max(0, maxX - minX) : 0
+  const populatedHeight =
+    Number.isFinite(minY) && Number.isFinite(maxY) ? Math.max(0, maxY - minY) : 0
 
   const tree = new RBush<BBoxItem>()
   const boxes: BBoxItem[] = paths.map((p, i) => {
@@ -222,5 +251,12 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
     })
   }
 
-  return { totalShapes: rawPaths.length, overlaps, clipPathShapes }
+  return {
+    totalShapes: rawPaths.length,
+    overlaps,
+    populatedWidth,
+    populatedHeight,
+    totalOutlineLength,
+    clipPathShapes,
+  }
 }

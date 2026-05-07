@@ -6,6 +6,22 @@ import { analyzeSVG, type AnalysisResult } from './lib/svgAnalyzer'
 
 type Status = 'idle' | 'analyzing' | 'done' | 'error'
 
+function formatMm(value: number): string {
+  return `${value.toFixed(2)} mm`
+}
+
+function formatDuration(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return '—'
+  const seconds = Math.round(totalSeconds)
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainingSeconds = seconds % 60
+
+  if (hours > 0) return `${hours}h ${minutes}m ${remainingSeconds}s`
+  if (minutes > 0) return `${minutes}m ${remainingSeconds}s`
+  return `${remainingSeconds}s`
+}
+
 export default function App() {
   const [svgText, setSvgText] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string>('')
@@ -15,6 +31,7 @@ export default function App() {
   const [highlightedPair, setHighlightedPair] = useState<[number, number] | null>(null)
   const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
   const [outlineMode, setOutlineMode] = useState<boolean>(true)
+  const [cuttingVelocity, setCuttingVelocity] = useState<number>(50)
 
   const runAnalysis = useCallback((text: string, clipPaths: boolean) => {
     setResult(null)
@@ -55,6 +72,7 @@ export default function App() {
     setStatus('idle')
     setErrorMsg('')
     setHighlightedPair(null)
+    setCuttingVelocity(50)
   }
 
   return (
@@ -111,6 +129,55 @@ export default function App() {
         {/* Results */}
         {status === 'done' && svgText && result && (
           <div className="flex flex-col gap-6">
+            {(() => {
+              const showSizeWarning = result.populatedWidth > 460 && result.populatedHeight > 460
+              const safeVelocity = cuttingVelocity > 0 ? cuttingVelocity : null
+              const expectedCuttingTime = safeVelocity
+                ? result.totalOutlineLength / safeVelocity
+                : Number.NaN
+
+              return (
+                <div className="w-full bg-white rounded-xl border border-gray-200 p-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div className="bg-gray-50 rounded-lg px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Populated width</p>
+                      <p className="text-lg font-semibold text-gray-800">{formatMm(result.populatedWidth)}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Populated height</p>
+                      <p className="text-lg font-semibold text-gray-800">{formatMm(result.populatedHeight)}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg px-4 py-3">
+                      <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Total outline length</p>
+                      <p className="text-lg font-semibold text-gray-800">{formatMm(result.totalOutlineLength)}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg px-4 py-3">
+                      <label className="text-xs uppercase tracking-wide text-gray-500 font-semibold block mb-1">
+                        Cutting velocity (mm/s)
+                      </label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={cuttingVelocity}
+                        onChange={(e) => setCuttingVelocity(Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-gray-800"
+                      />
+                      <p className="mt-2 text-sm text-gray-600">
+                        Expected cutting time:{' '}
+                        <span className="font-semibold text-gray-800">{formatDuration(expectedCuttingTime)}</span>
+                      </p>
+                    </div>
+                  </div>
+                  {showSizeWarning && (
+                    <div className="mt-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm">
+                      Warning: populated width and height both exceed 460 mm.
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Summary bar */}
             <div className="flex flex-wrap items-center gap-4 bg-white rounded-xl border border-gray-200 px-5 py-3">
               <span className="text-gray-500 text-sm">
