@@ -173,7 +173,9 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
     minY = Math.min(minY, b.top)
     maxX = Math.max(maxX, b.right)
     maxY = Math.max(maxY, b.bottom)
-    totalOutlineLength += path.length
+    if (path instanceof scope.Path || path instanceof scope.CompoundPath) {
+      totalOutlineLength += path.length
+    }
   }
 
   const populatedWidth =
