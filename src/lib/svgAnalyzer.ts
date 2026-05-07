@@ -17,6 +17,9 @@ export interface ClipPathShape {
 export interface AnalysisResult {
   totalShapes: number
   overlaps: OverlapEntry[]
+  populatedWidth: number
+  populatedHeight: number
+  totalOutlineLength: number
   /**
    * Clip path shapes collected when `considerClipPaths` is enabled.
    * Each entry holds the SVG path data of one clip mask so that the viewer
@@ -41,6 +44,61 @@ interface BBoxItem {
   maxX: number
   maxY: number
   index: number
+}
+
+/**
+ * Converts a CSS/SVG length value string (e.g. "50mm", "2in", "200", "200px")
+ * to millimetres.  Unit-less values are treated as CSS pixels (1 px = 25.4/96 mm).
+ */
+function parseLengthToMm(attr: string): number | null {
+  // Matches optional leading sign, digits/decimals, optional CSS unit.
+  // Valid inputs: "50mm", "2.5in", "200", "200px", "+3.14pt".
+  // Scientific notation (e.g. "1e3mm") is not supported.
+  const m = attr.trim().match(/^([+-]?[0-9]*\.?[0-9]+)\s*(mm|cm|in|px|pt|pc)?$/)
+  if (!m) return null
+  const num = parseFloat(m[1])
+  if (isNaN(num)) return null
+  const unit = m[2] ?? 'px'
+  switch (unit) {
+    case 'mm': return num
+    case 'cm': return num * 10
+    case 'in': return num * 25.4
+    case 'pt': return num * (25.4 / 72)
+    case 'pc': return num * (25.4 / 6)
+    case 'px':
+    default:   return num * (25.4 / 96)
+  }
+}
+
+/**
+ * Returns the scale factor (mm per paper.js unit) by reading the SVG's
+ * declared `width` attribute.
+ *
+ * Paper.js interprets the SVG viewport using only the *numeric* part of the
+ * `width` attribute (e.g. the "100" in "100mm"), ignoring the CSS unit, and
+ * scales any `viewBox` to fit that numeric viewport.  Therefore
+ * `path.bounds` values are in "numeric-viewport units", and converting them
+ * to mm simply requires multiplying by the mm equivalent of one declared-unit:
+ *   mmPerUnit = parseLengthToMm(widthAttr) / parseFloat(widthAttr)
+ *
+ * Examples:
+ *   width="50mm"  → 50mm/50  = 1.0  mm per unit
+ *   width="200"   → 52.9mm/200 = 25.4/96  mm per unit  (CSS px default)
+ *   width="2in"   → 50.8mm/2  = 25.4  mm per unit
+ */
+function computeMmPerUnit(svgText: string): number {
+  const FALLBACK = 25.4 / 96  // 1 CSS pixel in mm
+
+  const wMatch = svgText.match(/\bwidth=["']([^"']+)["']/)
+  if (wMatch) {
+    const widthMm = parseLengthToMm(wMatch[1])
+    const rawNum = parseFloat(wMatch[1])
+    if (widthMm !== null && !isNaN(rawNum) && rawNum > 0) {
+      return widthMm / rawNum
+    }
+  }
+
+  return FALLBACK
 }
 
 function shapeLabel(item: paper.PathItem, index: number): string {
@@ -143,7 +201,13 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
   }
 
   if (rawPaths.length === 0) {
-    return { totalShapes: 0, overlaps: [] }
+    return {
+      totalShapes: 0,
+      overlaps: [],
+      populatedWidth: 0,
+      populatedHeight: 0,
+      totalOutlineLength: 0,
+    }
   }
 
   // When considerClipPaths is true, intersect each shape with its ancestor
@@ -151,6 +215,31 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
   const paths: paper.PathItem[] = considerClipPaths
     ? rawPaths.map((p) => getEffectivePath(p, scope))
     : rawPaths
+
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let totalOutlineLength = 0
+
+  // Compute the mm-per-user-unit scale before traversing paths.
+  const mmPerUnit = computeMmPerUnit(svgText)
+
+  for (const path of paths) {
+    const b = path.bounds
+    minX = Math.min(minX, b.left)
+    minY = Math.min(minY, b.top)
+    maxX = Math.max(maxX, b.right)
+    maxY = Math.max(maxY, b.bottom)
+    if (path instanceof scope.Path || path instanceof scope.CompoundPath) {
+      totalOutlineLength += path.length * mmPerUnit
+    }
+  }
+
+  const populatedWidth =
+    Number.isFinite(minX) && Number.isFinite(maxX) ? Math.max(0, maxX - minX) * mmPerUnit : 0
+  const populatedHeight =
+    Number.isFinite(minY) && Number.isFinite(maxY) ? Math.max(0, maxY - minY) * mmPerUnit : 0
 
   const tree = new RBush<BBoxItem>()
   const boxes: BBoxItem[] = paths.map((p, i) => {
@@ -222,5 +311,12 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
     })
   }
 
-  return { totalShapes: rawPaths.length, overlaps, clipPathShapes }
+  return {
+    totalShapes: rawPaths.length,
+    overlaps,
+    populatedWidth,
+    populatedHeight,
+    totalOutlineLength,
+    clipPathShapes,
+  }
 }
