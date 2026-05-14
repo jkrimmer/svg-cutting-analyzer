@@ -1,13 +1,21 @@
-# SVG Overlap Analyzer
+# SVG Cutting Analyzer
 
-A browser-based tool that detects spatially overlapping outlines in SVG files.
-Drop in an `.svg` file and get an instant visual report of every pair of shapes whose outlines intersect.
+A browser-based tool for verifying the readiness of an SVG file for use with a cutting plotter.
+Drop in an `.svg` file and get an instant report covering shape dimensions, total outline length, estimated cutting time, and any overlapping outlines that would cause issues on the plotter.
 
 ---
 
 ## Purpose
 
-SVG files often contain layered shapes that unintentionally overlap. This tool uses **paper.js** to parse and normalize every shape in an SVG (including `<rect>`, `<circle>`, `<ellipse>`, `<polygon>`, and complex `<path>` elements), then calls `getIntersections()` on each candidate pair to find exact crossing points. An **R-tree** (via rbush) pre-filters pairs by bounding box so the check scales to large files.
+Before sending an SVG to a cutting plotter, several properties of the file need to be checked:
+
+- **Populated dimensions** — the bounding box of all shapes must fit within the machine bed.
+- **Total outline length** — the combined path length of all shapes determines how long a job will take.
+- **Estimated cutting time** — calculated from the total outline length and a configurable cutting velocity.
+- **Overlapping outlines** — shapes whose outlines intersect each other cause the plotter to cut the same material twice, which can damage tooling or the workpiece.
+- **Clip path regions** — optionally constrain overlap detection to only the visible (non-clipped) area of each shape.
+
+This tool uses **paper.js** to parse and normalize every shape in an SVG (including `<rect>`, `<circle>`, `<ellipse>`, `<polygon>`, and complex `<path>` elements). An **R-tree** (via rbush) pre-filters shape pairs by bounding box before the exact `getIntersections()` check, so the analysis scales to large files.
 
 ---
 
@@ -16,8 +24,8 @@ SVG files often contain layered shapes that unintentionally overlap. This tool u
 **Requirements:** Node.js ≥ 18
 
 ```bash
-git clone https://github.com/jkrimmer/svg-overlap-analyzer.git
-cd svg-overlap-analyzer
+git clone https://github.com/jkrimmer/svg-cutting-analyzer.git
+cd svg-cutting-analyzer
 npm install
 ```
 
@@ -34,9 +42,13 @@ npm run dev
 Then open **http://localhost:5173** in your browser.
 
 1. Drag and drop any `.svg` file onto the drop zone (or click to browse).
-2. The app parses all shapes, runs the overlap analysis, and shows:
-   - A **live SVG preview** with red dots at every intersection point.
-   - A **table** of all overlapping shape pairs — hover a row to highlight its intersections in amber.
+2. The app parses all shapes and displays:
+   - **Populated width / height** — the bounding box of all shapes in millimetres, with a warning when both dimensions exceed the 460 mm machine bed limit.
+   - **Total outline length** — the sum of all path lengths in millimetres.
+   - **Estimated cutting time** — enter your plotter's cutting velocity (mm/s) to get a time estimate.
+   - **Live SVG preview** — with red dots at every intersection point; toggle *Outline mode* to see bare outlines without fills.
+   - **Overlapping pairs table** — every pair of shapes whose outlines intersect; hover a row to highlight that pair's intersections in amber.
+3. Use the **Consider clip paths** toggle to restrict overlap detection to the visually visible (non-clipped) region of each shape. Clip regions are then shown in the preview.
 
 To build for production:
 
@@ -83,12 +95,12 @@ The tests are in `src/test/svgAnalyzer.test.ts` and cover:
 
 ```
 src/
-├── lib/svgAnalyzer.ts          ← core engine: paper.js + rbush
+├── lib/svgAnalyzer.ts          ← core engine: paper.js + rbush; computes dimensions, outline length, and overlaps
 ├── components/
 │   ├── FileDropZone.tsx        ← drag-and-drop upload
-│   ├── SvgViewer.tsx           ← SVG preview + intersection dot overlay
+│   ├── SvgViewer.tsx           ← SVG preview + intersection dot overlay + clip region display
 │   └── OverlapTable.tsx        ← table of overlapping pairs
-├── App.tsx                     ← application shell
+├── App.tsx                     ← application shell; cutting velocity input and time estimate
 ├── main.tsx                    ← React 18 entry point
 └── test/
     ├── setup.ts                ← node-canvas polyfill for paper.js in jsdom
