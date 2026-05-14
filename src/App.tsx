@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import FileDropZone from './components/FileDropZone'
 import SvgViewer from './components/SvgViewer'
 import OverlapTable from './components/OverlapTable'
+import UnsupportedList from './components/UnsupportedList'
 import { analyzeSVG, type AnalysisResult } from './lib/svgAnalyzer'
 
 type Status = 'idle' | 'analyzing' | 'done' | 'error'
@@ -33,6 +34,8 @@ export default function App() {
   const [status, setStatus] = useState<Status>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [highlightedPair, setHighlightedPair] = useState<[number, number] | null>(null)
+  const [highlightedUnsupportedId, setHighlightedUnsupportedId] = useState<string | null>(null)
+  const [highlightedOpenPathId, setHighlightedOpenPathId] = useState<string | null>(null)
   const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
   const [outlineMode, setOutlineMode] = useState<boolean>(true)
   const [cuttingVelocity, setCuttingVelocity] = useState<number>(50)
@@ -40,6 +43,8 @@ export default function App() {
   const runAnalysis = useCallback((text: string, clipPaths: boolean) => {
     setResult(null)
     setHighlightedPair(null)
+    setHighlightedUnsupportedId(null)
+    setHighlightedOpenPathId(null)
     setStatus('analyzing')
     setErrorMsg('')
 
@@ -76,6 +81,8 @@ export default function App() {
     setStatus('idle')
     setErrorMsg('')
     setHighlightedPair(null)
+    setHighlightedUnsupportedId(null)
+    setHighlightedOpenPathId(null)
     setCuttingVelocity(50)
   }
 
@@ -229,6 +236,8 @@ export default function App() {
                     svgText={svgText}
                     overlaps={result.overlaps}
                     highlightedPair={highlightedPair}
+                    highlightedUnsupportedId={highlightedUnsupportedId}
+                    highlightedOpenPathId={highlightedOpenPathId}
                     outlineMode={outlineMode}
                     clipPathShapes={result.clipPathShapes}
                   />
@@ -250,6 +259,21 @@ export default function App() {
                   onHover={setHighlightedPair}
                 />
               </div>
+            </div>
+
+            {/* Unsupported elements and non-closed paths */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Plottability Warnings
+              </h2>
+                <UnsupportedList
+                  unsupportedElements={result.unsupportedElements}
+                  openPaths={result.openPaths}
+                  highlightedUnsupportedId={highlightedUnsupportedId}
+                  highlightedOpenPathId={highlightedOpenPathId}
+                  onUnsupportedHover={setHighlightedUnsupportedId}
+                  onOpenPathHover={setHighlightedOpenPathId}
+                />
             </div>
           </div>
         )}

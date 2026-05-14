@@ -14,6 +14,26 @@ export interface ClipPathShape {
   pathData: string
 }
 
+/**
+ * A visible SVG graphical element that cannot be directly plotted because it
+ * is not a `<path>` element (e.g. `<circle>`, `<rect>`, `<text>`, `<image>`).
+ */
+export interface UnsupportedElement {
+  /** Element's `id` attribute, or an auto-generated label like `"circle-1"`. */
+  id: string
+  /** Lower-cased SVG tag name, e.g. `"circle"`, `"text"`, `"image"`. */
+  tagName: string
+}
+
+/**
+ * A `<path>` element whose outline is not a closed loop (i.e. at least one
+ * sub-path lacks a trailing `Z`/`z` command).
+ */
+export interface OpenPath {
+  /** Element's `id` attribute, or an auto-generated label like `"path-1"`. */
+  id: string
+}
+
 export interface AnalysisResult {
   totalShapes: number
   overlaps: OverlapEntry[]
@@ -26,6 +46,10 @@ export interface AnalysisResult {
    * can render the clip regions visually (e.g. in green).
    */
   clipPathShapes?: ClipPathShape[]
+  /** Visible graphical elements that are not `<path>` and cannot be plotted directly. */
+  unsupportedElements: UnsupportedElement[]
+  /** `<path>` elements that contain at least one open (unclosed) sub-path. */
+  openPaths: OpenPath[]
 }
 
 export interface AnalysisOptions {
@@ -101,6 +125,117 @@ function computeMmPerUnit(svgText: string): number {
   return FALLBACK
 }
 
+/** Tags whose entire subtrees are excluded from unsupported-element and open-path scans. */
+const SKIP_SUBTREE_TAGS = new Set([
+  'defs', 'clippath', 'marker', 'symbol',
+  'lineargradient', 'radialgradient', 'pattern',
+  'style', 'title', 'desc', 'metadata',
+])
+
+/**
+ * Visible SVG graphical element tags that are NOT `<path>` and therefore
+ * cannot be plotted directly by cutting software.
+ */
+const GRAPHICAL_TAGS_NON_PATH = new Set([
+  'circle', 'ellipse', 'image', 'line', 'polygon', 'polyline',
+  'rect', 'text', 'textpath', 'tspan', 'use',
+])
+
+/**
+ * Returns true if the element itself is hidden via `display:none` or
+ * `visibility:hidden` (checked on the element's own attributes/style only).
+ * The recursive walk skips into hidden subtrees, so ancestor visibility is
+ * already handled by the caller returning early when the parent is hidden.
+ */
+function isCurrentElementHidden(el: Element): boolean {
+  const styleAttr = el.getAttribute('style') ?? ''
+  const display =
+    el.getAttribute('display') ??
+    styleAttr.match(/display\s*:\s*([^;]+)/)?.[1]?.trim()
+  if (display === 'none') return true
+  const visibility =
+    el.getAttribute('visibility') ??
+    styleAttr.match(/visibility\s*:\s*([^;]+)/)?.[1]?.trim()
+  if (visibility === 'hidden') return true
+  return false
+}
+
+/**
+ * Returns true when the `d` attribute of a `<path>` element contains at least
+ * one sub-path that does not end with a `Z`/`z` (close-path) command.
+ */
+function isPathOpen(d: string): boolean {
+  const trimmed = d.trim()
+  if (!trimmed) return false
+  // Split into sub-paths at each M/m command (lookahead keeps the delimiter).
+  const subpaths = trimmed.split(/(?=[Mm])/).filter((s) => s.trim())
+  return subpaths.some((sub) => !/[Zz]\s*$/.test(sub.trim()))
+}
+
+/**
+ * Walks the parsed SVG DOM and returns every visible graphical element that is
+ * not a `<path>` (i.e. elements that cutting software cannot plot directly).
+ * Subtrees inside `<defs>`, `<clipPath>`, `<symbol>`, etc. are excluded.
+ */
+function collectUnsupportedElements(svgText: string): UnsupportedElement[] {
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml')
+  const unsupported: UnsupportedElement[] = []
+  const tagCounters: Record<string, number> = {}
+
+  function walk(el: Element): void {
+    const tag = el.tagName.toLowerCase()
+    if (SKIP_SUBTREE_TAGS.has(tag)) return
+    if (isCurrentElementHidden(el)) return
+
+    if (GRAPHICAL_TAGS_NON_PATH.has(tag)) {
+      tagCounters[tag] = (tagCounters[tag] ?? 0) + 1
+      const explicitId = el.getAttribute('id')?.trim()
+      const id = explicitId || `${tag}-${tagCounters[tag]}`
+      unsupported.push({ id, tagName: tag })
+    }
+
+    for (const child of Array.from(el.children)) {
+      walk(child)
+    }
+  }
+
+  walk(doc.documentElement)
+  return unsupported
+}
+
+/**
+ * Walks the parsed SVG DOM and returns every visible `<path>` element that
+ * contains at least one open (unclosed) sub-path.
+ */
+function collectOpenPaths(svgText: string): OpenPath[] {
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml')
+  const openPaths: OpenPath[] = []
+  let pathCounter = 0
+
+  function walk(el: Element): void {
+    const tag = el.tagName.toLowerCase()
+    if (SKIP_SUBTREE_TAGS.has(tag)) return
+    if (isCurrentElementHidden(el)) return
+
+    if (tag === 'path') {
+      pathCounter++
+      const d = el.getAttribute('d') ?? ''
+      if (isPathOpen(d)) {
+        const explicitId = el.getAttribute('id')?.trim()
+        const id = explicitId || `path-${pathCounter}`
+        openPaths.push({ id })
+      }
+    }
+
+    for (const child of Array.from(el.children)) {
+      walk(child)
+    }
+  }
+
+  walk(doc.documentElement)
+  return openPaths
+}
+
 function shapeLabel(item: paper.PathItem, index: number): string {
   if (item.name && item.name.trim() !== '') return item.name.trim()
   const dataId = (item as unknown as { data?: { id?: string } }).data?.id
@@ -144,6 +279,9 @@ function getEffectivePath(
 
 export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): AnalysisResult {
   const { considerClipPaths = false } = options
+
+  const unsupportedElements = collectUnsupportedElements(svgText)
+  const openPaths = collectOpenPaths(svgText)
 
   const canvas = document.createElement('canvas')
   const scope = new paper.PaperScope()
@@ -207,6 +345,8 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
       populatedWidth: 0,
       populatedHeight: 0,
       totalOutlineLength: 0,
+      unsupportedElements,
+      openPaths,
     }
   }
 
@@ -318,5 +458,7 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
     populatedHeight,
     totalOutlineLength,
     clipPathShapes,
+    unsupportedElements,
+    openPaths,
   }
 }
