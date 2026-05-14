@@ -1,59 +1,84 @@
-import { useCallback, useState } from 'react'
-import { useDropzone } from 'react-dropzone'
+import { useCallback, useRef, useState } from 'react'
 
 interface Props {
   onFile: (svgText: string, fileName: string) => void
 }
 
+function readSvgFile(file: File, onFile: (text: string, name: string) => void, setError: (msg: string) => void) {
+  if (!file.name.toLowerCase().endsWith('.svg')) {
+    setError('Only .svg files are accepted.')
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const text = e.target?.result
+    if (typeof text === 'string') onFile(text, file.name)
+  }
+  reader.readAsText(file)
+}
+
 export default function FileDropZone({ onFile }: Props) {
   const [error, setError] = useState<string | null>(null)
+  const [isDragActive, setIsDragActive] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const onDrop = useCallback(
-    (acceptedFiles: File[], rejectedFiles: { file: File }[]) => {
-      setError(null)
+  const handleFiles = useCallback((files: FileList | null) => {
+    setError(null)
+    if (!files || files.length === 0) return
+    readSvgFile(files[0], onFile, (msg) => setError(msg))
+  }, [onFile])
 
-      if (rejectedFiles.length > 0) {
-        setError('Only .svg files are accepted.')
-        return
-      }
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragActive(true)
+  }, [])
 
-      const file = acceptedFiles[0]
-      if (!file) return
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragActive(false)
+  }, [])
 
-      if (!file.name.toLowerCase().endsWith('.svg')) {
-        setError('Only .svg files are accepted.')
-        return
-      }
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragActive(false)
+    handleFiles(e.dataTransfer.files)
+  }, [handleFiles])
 
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const text = e.target?.result
-        if (typeof text === 'string') {
-          onFile(text, file.name)
-        }
-      }
-      reader.readAsText(file)
-    },
-    [onFile],
-  )
+  const handleClick = useCallback(() => {
+    inputRef.current?.click()
+  }, [])
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/svg+xml': ['.svg'] },
-    multiple: false,
-  })
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      inputRef.current?.click()
+    }
+  }, [])
 
   return (
     <div className="flex flex-col gap-3">
       <div
-        {...getRootProps()}
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className={`flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-8 py-16 cursor-pointer transition-colors ${
           isDragActive
             ? 'border-blue-500 bg-blue-50'
             : 'border-gray-300 bg-white hover:border-blue-400 hover:bg-gray-50'
         }`}
       >
-        <input {...getInputProps()} />
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".svg,image/svg+xml"
+          aria-label="Upload SVG file"
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
         <svg
           className="w-12 h-12 text-gray-400"
           fill="none"
