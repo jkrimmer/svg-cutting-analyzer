@@ -172,7 +172,6 @@ export default function SvgViewer({
   const [isPanning, setIsPanning] = useState(false)
   const [unsupportedHighlightBox, setUnsupportedHighlightBox] = useState<HighlightBox | null>(null)
   const [openPathHighlightD, setOpenPathHighlightD] = useState<string | null>(null)
-  const [openPathHighlightBox, setOpenPathHighlightBox] = useState<HighlightBox | null>(null)
   const panStart = useRef<{ mouseX: number; mouseY: number; panX: number; panY: number } | null>(null)
 
   // Keep transformRef in sync with state so the wheel handler (closed over once) always sees fresh values
@@ -302,7 +301,6 @@ export default function SvgViewer({
     if (!rootSvg) {
       setUnsupportedHighlightBox(null)
       setOpenPathHighlightD(null)
-      setOpenPathHighlightBox(null)
       return
     }
 
@@ -325,20 +323,12 @@ export default function SvgViewer({
     if (highlightedOpenPathId) {
       const target = findOpenPathElementById(rootSvg, highlightedOpenPathId)
       if (target) {
-        try {
-          const b = target.getBBox()
-          setOpenPathHighlightBox({ x: b.x, y: b.y, width: b.width, height: b.height })
-        } catch {
-          setOpenPathHighlightBox(null)
-        }
         setOpenPathHighlightD(target.getAttribute('d'))
       } else {
         setOpenPathHighlightD(null)
-        setOpenPathHighlightBox(null)
       }
     } else {
       setOpenPathHighlightD(null)
-      setOpenPathHighlightBox(null)
     }
   }, [processedSvg, highlightedUnsupportedId, highlightedOpenPathId])
 
@@ -410,7 +400,7 @@ export default function SvgViewer({
         )}
 
         {/* Overlay SVG for unsupported/open-path highlights */}
-        {containerSize.width > 0 && viewBox && (unsupportedHighlightBox || openPathHighlightD || openPathHighlightBox) && (
+        {containerSize.width > 0 && viewBox && (unsupportedHighlightBox || openPathHighlightD) && (
           <svg
             className="absolute inset-0 pointer-events-none"
             width={containerSize.width}
@@ -439,19 +429,6 @@ export default function SvgViewer({
                 strokeWidth={3}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            )}
-            {!openPathHighlightD && openPathHighlightBox && (
-              <rect
-                x={openPathHighlightBox.x}
-                y={openPathHighlightBox.y}
-                width={Math.max(openPathHighlightBox.width, 1)}
-                height={Math.max(openPathHighlightBox.height, 1)}
-                fill={OPEN_PATH_HIGHLIGHT_COLOR}
-                fillOpacity={0.08}
-                stroke={OPEN_PATH_HIGHLIGHT_COLOR}
-                strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
               />
             )}
