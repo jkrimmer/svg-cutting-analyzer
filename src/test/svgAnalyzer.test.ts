@@ -283,3 +283,176 @@ describe('SVG dimension unit conversion (mm width + viewBox)', () => {
     expect(result.totalOutlineLength).toBeGreaterThan(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 16. Unsupported elements: non-path graphical elements are detected
+// ---------------------------------------------------------------------------
+describe('unsupportedElements — non-path elements are listed', () => {
+  it('flags circle, rect, and text elements with correct tagName and id', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <circle id="my-circle" cx="50" cy="50" r="20"/>
+      <rect id="my-rect" x="80" y="80" width="40" height="40"/>
+      <text id="my-text" x="10" y="10">Hello</text>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.unsupportedElements.length).toBe(3)
+    expect(result.unsupportedElements.find((e) => e.tagName === 'circle')?.id).toBe('my-circle')
+    expect(result.unsupportedElements.find((e) => e.tagName === 'rect')?.id).toBe('my-rect')
+    expect(result.unsupportedElements.find((e) => e.tagName === 'text')?.id).toBe('my-text')
+  })
+
+  it('auto-generates labels when elements have no id attribute', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <circle cx="50" cy="50" r="20"/>
+      <circle cx="100" cy="100" r="20"/>
+      <rect x="10" y="10" width="30" height="30"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.unsupportedElements.length).toBe(3)
+    expect(result.unsupportedElements[0]).toEqual({ id: 'circle-1', tagName: 'circle' })
+    expect(result.unsupportedElements[1]).toEqual({ id: 'circle-2', tagName: 'circle' })
+    expect(result.unsupportedElements[2]).toEqual({ id: 'rect-1', tagName: 'rect' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 17. Unsupported elements: pure-path SVGs produce an empty list
+// ---------------------------------------------------------------------------
+describe('unsupportedElements — path-only SVG returns empty list', () => {
+  it('returns [] when all shapes are <path> elements', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <path id="p1" d="M 10,10 L 90,10 L 90,90 L 10,90 Z"/>
+      <path id="p2" d="M 110,10 L 190,10 L 190,90 Z"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.unsupportedElements).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 18. Unsupported elements: elements inside <defs> are excluded
+// ---------------------------------------------------------------------------
+describe('unsupportedElements — elements inside <defs> are excluded', () => {
+  it('does not flag a <rect> that lives inside <defs>', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <defs>
+        <rect id="template" x="0" y="0" width="50" height="50"/>
+      </defs>
+      <path d="M 10,10 L 50,10 Z"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.unsupportedElements).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 19. Unsupported elements: hidden elements are excluded
+// ---------------------------------------------------------------------------
+describe('unsupportedElements — hidden elements are excluded', () => {
+  it('does not flag a circle with display="none"', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <circle id="hidden" cx="50" cy="50" r="20" display="none"/>
+      <circle id="visible" cx="100" cy="100" r="20"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.unsupportedElements.length).toBe(1)
+    expect(result.unsupportedElements[0].id).toBe('visible')
+  })
+
+  it('does not flag elements inside a hidden group', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <g display="none">
+        <circle cx="50" cy="50" r="20"/>
+        <rect x="10" y="10" width="30" height="30"/>
+      </g>
+      <circle id="shown" cx="150" cy="150" r="10"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.unsupportedElements.length).toBe(1)
+    expect(result.unsupportedElements[0].id).toBe('shown')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 20. openPaths: open <path> elements are detected
+// ---------------------------------------------------------------------------
+describe('openPaths — open path elements are listed', () => {
+  it('flags a <path> with no Z command', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <path id="open-line" d="M 0,0 L 50,50"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.openPaths.length).toBe(1)
+    expect(result.openPaths[0].id).toBe('open-line')
+  })
+
+  it('auto-generates id label when <path> has no id attribute', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <path d="M 0,0 L 50,50"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.openPaths.length).toBe(1)
+    expect(result.openPaths[0].id).toBe('path-1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 21. openPaths: closed <path> elements are NOT flagged
+// ---------------------------------------------------------------------------
+describe('openPaths — closed path elements are not flagged', () => {
+  it('returns [] for a <path> that ends with Z', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <path id="closed" d="M 10,10 L 90,10 L 90,90 L 10,90 Z"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.openPaths).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 22. openPaths: compound path with an open sub-path is flagged
+// ---------------------------------------------------------------------------
+describe('openPaths — compound path with open sub-path', () => {
+  it('flags a <path> whose second sub-path is not closed', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <path id="mixed" d="M 0,0 L 50,0 Z M 100,100 L 150,100"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.openPaths.length).toBe(1)
+    expect(result.openPaths[0].id).toBe('mixed')
+  })
+
+  it('does not flag a <path> where every sub-path is closed', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <path id="all-closed" d="M 0,0 L 50,0 L 50,50 Z M 100,100 L 150,100 L 150,150 Z"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.openPaths).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 23. <polygon> appears in unsupportedElements but NOT in openPaths
+// ---------------------------------------------------------------------------
+describe('<polygon> is flagged as unsupported but not as open path', () => {
+  it('polygon is in unsupportedElements and openPaths is empty', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <polygon id="tri" points="100,10 190,190 10,190"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.unsupportedElements.length).toBe(1)
+    expect(result.unsupportedElements[0].tagName).toBe('polygon')
+    expect(result.openPaths).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 24. Empty SVG: both new lists are empty arrays
+// ---------------------------------------------------------------------------
+describe('empty SVG — unsupportedElements and openPaths are empty', () => {
+  it('returns empty arrays for both diagnostic lists', () => {
+    const result = analyzeSVG('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    expect(result.unsupportedElements).toEqual([])
+    expect(result.openPaths).toEqual([])
+  })
+})

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import FileDropZone from './components/FileDropZone'
 import SvgViewer from './components/SvgViewer'
 import OverlapTable from './components/OverlapTable'
+import UnsupportedList from './components/UnsupportedList'
 import { analyzeSVG, type AnalysisResult } from './lib/svgAnalyzer'
 
 type Status = 'idle' | 'analyzing' | 'done' | 'error'
@@ -250,6 +251,17 @@ export default function App() {
                   onHover={setHighlightedPair}
                 />
               </div>
+            </div>
+
+            {/* Unsupported elements and non-closed paths */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Plottability Warnings
+              </h2>
+              <UnsupportedList
+                unsupportedElements={result.unsupportedElements}
+                openPaths={result.openPaths}
+              />
             </div>
           </div>
         )}
