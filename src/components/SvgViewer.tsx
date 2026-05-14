@@ -5,6 +5,8 @@ interface Props {
   svgText: string
   overlaps: OverlapEntry[]
   highlightedPair: [number, number] | null
+  highlightedUnsupportedId: string | null
+  highlightedOpenPathId: string | null
   outlineMode?: boolean
   clipPathShapes?: ClipPathShape[]
 }
@@ -22,8 +24,26 @@ interface Transform {
 }
 
 const INITIAL_TRANSFORM: Transform = { zoom: 1, pan: { x: 0, y: 0 } }
+const UNSUPPORTED_HIGHLIGHT_COLOR = '#7c3aed'
+const OPEN_PATH_HIGHLIGHT_COLOR = '#0891b2'
 
 const OUTLINE_STYLE = '<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: 1 !important; }</style>'
+const SKIP_SUBTREE_TAGS = new Set([
+  'defs', 'clippath', 'marker', 'symbol',
+  'lineargradient', 'radialgradient', 'pattern',
+  'style', 'title', 'desc', 'metadata',
+])
+const GRAPHICAL_TAGS_NON_PATH = new Set([
+  'circle', 'ellipse', 'image', 'line', 'polygon', 'polyline',
+  'rect', 'text', 'textpath', 'tspan', 'use',
+])
+
+interface HighlightBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 /** Injects a viewBox attribute into older SVGs that only declare width/height. */
 function ensureViewBox(svgText: string): string {
@@ -54,12 +74,105 @@ function parseViewBox(svgText: string): ViewBox | null {
   return null
 }
 
-export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineMode = false, clipPathShapes }: Props) {
+function isCurrentElementHidden(el: Element): boolean {
+  const styleAttr = el.getAttribute('style') ?? ''
+  const display =
+    el.getAttribute('display') ??
+    styleAttr.match(/display\s*:\s*([^;]+)/)?.[1]?.trim()
+  if (display === 'none') return true
+  const visibility =
+    el.getAttribute('visibility') ??
+    styleAttr.match(/visibility\s*:\s*([^;]+)/)?.[1]?.trim()
+  if (visibility === 'hidden') return true
+  return false
+}
+
+function isPathOpen(d: string): boolean {
+  const trimmed = d.trim()
+  if (!trimmed) return false
+  const subpaths = trimmed.split(/(?=[Mm])/).filter((s) => s.trim())
+  return subpaths.some((sub) => !/[Zz]\s*$/.test(sub.trim()))
+}
+
+function findUnsupportedElementById(rootSvg: SVGSVGElement, label: string): SVGGraphicsElement | null {
+  const tagCounters: Record<string, number> = {}
+  let found: SVGGraphicsElement | null = null
+
+  function walk(el: Element): void {
+    if (found) return
+    const tag = el.tagName.toLowerCase()
+    if (SKIP_SUBTREE_TAGS.has(tag)) return
+    if (isCurrentElementHidden(el)) return
+
+    if (GRAPHICAL_TAGS_NON_PATH.has(tag)) {
+      tagCounters[tag] = (tagCounters[tag] ?? 0) + 1
+      const explicitId = el.getAttribute('id')?.trim()
+      const computedId = explicitId || `${tag}-${tagCounters[tag]}`
+      if (computedId === label && el instanceof SVGGraphicsElement) {
+        found = el
+        return
+      }
+    }
+
+    for (const child of Array.from(el.children)) {
+      walk(child)
+    }
+  }
+
+  walk(rootSvg)
+  return found
+}
+
+function findOpenPathElementById(rootSvg: SVGSVGElement, label: string): SVGPathElement | null {
+  let pathCounter = 0
+  let found: SVGPathElement | null = null
+
+  function walk(el: Element): void {
+    if (found) return
+    const tag = el.tagName.toLowerCase()
+    if (SKIP_SUBTREE_TAGS.has(tag)) return
+    if (isCurrentElementHidden(el)) return
+
+    if (tag === 'path') {
+      pathCounter++
+      const d = el.getAttribute('d') ?? ''
+      if (isPathOpen(d)) {
+        const explicitId = el.getAttribute('id')?.trim()
+        const computedId = explicitId || `path-${pathCounter}`
+        if (computedId === label && el instanceof SVGPathElement) {
+          found = el
+          return
+        }
+      }
+    }
+
+    for (const child of Array.from(el.children)) {
+      walk(child)
+    }
+  }
+
+  walk(rootSvg)
+  return found
+}
+
+export default function SvgViewer({
+  svgText,
+  overlaps,
+  highlightedPair,
+  highlightedUnsupportedId,
+  highlightedOpenPathId,
+  outlineMode = false,
+  clipPathShapes,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const svgHostRef = useRef<HTMLDivElement>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const [transform, setTransform] = useState<Transform>(INITIAL_TRANSFORM)
   const transformRef = useRef<Transform>(INITIAL_TRANSFORM)
   const [isPanning, setIsPanning] = useState(false)
+  const [unsupportedHighlightBox, setUnsupportedHighlightBox] = useState<HighlightBox | null>(null)
+  const [openPathHighlightD, setOpenPathHighlightD] = useState<string | null>(null)
+  const [openPathHighlightBox, setOpenPathHighlightBox] = useState<HighlightBox | null>(null)
   const panStart = useRef<{ mouseX: number; mouseY: number; panX: number; panY: number } | null>(null)
 
   // Keep transformRef in sync with state so the wheel handler (closed over once) always sees fresh values
@@ -184,6 +297,51 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
     ? svgWithViewBox.replace(/(<svg\b[^>]*>)/, `$1${OUTLINE_STYLE}`)
     : svgWithViewBox
 
+  useEffect(() => {
+    const rootSvg = svgHostRef.current?.querySelector('svg')
+    if (!rootSvg) {
+      setUnsupportedHighlightBox(null)
+      setOpenPathHighlightD(null)
+      setOpenPathHighlightBox(null)
+      return
+    }
+
+    if (highlightedUnsupportedId) {
+      const target = findUnsupportedElementById(rootSvg, highlightedUnsupportedId)
+      if (target) {
+        try {
+          const b = target.getBBox()
+          setUnsupportedHighlightBox({ x: b.x, y: b.y, width: b.width, height: b.height })
+        } catch {
+          setUnsupportedHighlightBox(null)
+        }
+      } else {
+        setUnsupportedHighlightBox(null)
+      }
+    } else {
+      setUnsupportedHighlightBox(null)
+    }
+
+    if (highlightedOpenPathId) {
+      const target = findOpenPathElementById(rootSvg, highlightedOpenPathId)
+      if (target) {
+        try {
+          const b = target.getBBox()
+          setOpenPathHighlightBox({ x: b.x, y: b.y, width: b.width, height: b.height })
+        } catch {
+          setOpenPathHighlightBox(null)
+        }
+        setOpenPathHighlightD(target.getAttribute('d'))
+      } else {
+        setOpenPathHighlightD(null)
+        setOpenPathHighlightBox(null)
+      }
+    } else {
+      setOpenPathHighlightD(null)
+      setOpenPathHighlightBox(null)
+    }
+  }, [processedSvg, highlightedUnsupportedId, highlightedOpenPathId])
+
   // Collect highlighted intersection points
   const highlightedPoints =
     highlightedPair !== null
@@ -223,6 +381,7 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
       >
         {/* Original SVG rendered inline */}
         <div
+          ref={svgHostRef}
           className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
           dangerouslySetInnerHTML={{ __html: processedSvg }}
           style={{ lineHeight: 0 }}
@@ -247,6 +406,55 @@ export default function SvgViewer({ svgText, overlaps, highlightedPair, outlineM
                 vectorEffect="non-scaling-stroke"
               />
             ))}
+          </svg>
+        )}
+
+        {/* Overlay SVG for unsupported/open-path highlights */}
+        {containerSize.width > 0 && viewBox && (unsupportedHighlightBox || openPathHighlightD || openPathHighlightBox) && (
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            width={containerSize.width}
+            height={containerSize.height}
+            viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {unsupportedHighlightBox && (
+              <rect
+                x={unsupportedHighlightBox.x}
+                y={unsupportedHighlightBox.y}
+                width={Math.max(unsupportedHighlightBox.width, 1)}
+                height={Math.max(unsupportedHighlightBox.height, 1)}
+                fill={UNSUPPORTED_HIGHLIGHT_COLOR}
+                fillOpacity={0.12}
+                stroke={UNSUPPORTED_HIGHLIGHT_COLOR}
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {openPathHighlightD && (
+              <path
+                d={openPathHighlightD}
+                fill="none"
+                stroke={OPEN_PATH_HIGHLIGHT_COLOR}
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {!openPathHighlightD && openPathHighlightBox && (
+              <rect
+                x={openPathHighlightBox.x}
+                y={openPathHighlightBox.y}
+                width={Math.max(openPathHighlightBox.width, 1)}
+                height={Math.max(openPathHighlightBox.height, 1)}
+                fill={OPEN_PATH_HIGHLIGHT_COLOR}
+                fillOpacity={0.08}
+                stroke={OPEN_PATH_HIGHLIGHT_COLOR}
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
           </svg>
         )}
 
