@@ -26,8 +26,27 @@ interface Transform {
 const INITIAL_TRANSFORM: Transform = { zoom: 1, pan: { x: 0, y: 0 } }
 const UNSUPPORTED_HIGHLIGHT_COLOR = '#7c3aed'
 const OPEN_PATH_HIGHLIGHT_COLOR = '#0891b2'
+const UNSUPPORTED_HIGHLIGHT_CLASS = '__sca-unsupported-highlight'
+const OPEN_PATH_HIGHLIGHT_CLASS = '__sca-open-path-highlight'
 
 const OUTLINE_STYLE = '<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: 1 !important; }</style>'
+const HOVER_HIGHLIGHT_STYLE = `<style>
+.${UNSUPPORTED_HIGHLIGHT_CLASS} {
+  stroke: ${UNSUPPORTED_HIGHLIGHT_COLOR} !important;
+  stroke-width: 2 !important;
+  fill: ${UNSUPPORTED_HIGHLIGHT_COLOR} !important;
+  fill-opacity: 0.18 !important;
+  filter: drop-shadow(0 0 2px ${UNSUPPORTED_HIGHLIGHT_COLOR});
+}
+.${OPEN_PATH_HIGHLIGHT_CLASS} {
+  stroke: ${OPEN_PATH_HIGHLIGHT_COLOR} !important;
+  stroke-width: 3 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  fill: none !important;
+  filter: drop-shadow(0 0 2px ${OPEN_PATH_HIGHLIGHT_COLOR});
+}
+</style>`
 const SKIP_SUBTREE_TAGS = new Set([
   'defs', 'clippath', 'marker', 'symbol',
   'lineargradient', 'radialgradient', 'pattern',
@@ -37,13 +56,6 @@ const GRAPHICAL_TAGS_NON_PATH = new Set([
   'circle', 'ellipse', 'image', 'line', 'polygon', 'polyline',
   'rect', 'text', 'textpath', 'tspan', 'use',
 ])
-
-interface HighlightBox {
-  x: number
-  y: number
-  width: number
-  height: number
-}
 
 /** Injects a viewBox attribute into older SVGs that only declare width/height. */
 function ensureViewBox(svgText: string): string {
@@ -170,8 +182,8 @@ export default function SvgViewer({
   const [transform, setTransform] = useState<Transform>(INITIAL_TRANSFORM)
   const transformRef = useRef<Transform>(INITIAL_TRANSFORM)
   const [isPanning, setIsPanning] = useState(false)
-  const [unsupportedHighlightBox, setUnsupportedHighlightBox] = useState<HighlightBox | null>(null)
-  const [openPathHighlightD, setOpenPathHighlightD] = useState<string | null>(null)
+  const highlightedUnsupportedRef = useRef<SVGGraphicsElement | null>(null)
+  const highlightedOpenPathRef = useRef<SVGPathElement | null>(null)
   const panStart = useRef<{ mouseX: number; mouseY: number; panX: number; panY: number } | null>(null)
 
   // Keep transformRef in sync with state so the wheel handler (closed over once) always sees fresh values
@@ -292,43 +304,36 @@ export default function SvgViewer({
   const svgWithViewBox = ensureViewBox(svgText)
 
   // Step 2: in outline mode inject a <style> block that strips fills and shows strokes only
-  const processedSvg = outlineMode
-    ? svgWithViewBox.replace(/(<svg\b[^>]*>)/, `$1${OUTLINE_STYLE}`)
-    : svgWithViewBox
+  const processedSvg = svgWithViewBox.replace(
+    /(<svg\b[^>]*>)/,
+    `$1${outlineMode ? OUTLINE_STYLE : ''}${HOVER_HIGHLIGHT_STYLE}`,
+  )
 
   useEffect(() => {
     const rootSvg = svgHostRef.current?.querySelector('svg')
-    if (!rootSvg) {
-      setUnsupportedHighlightBox(null)
-      setOpenPathHighlightD(null)
-      return
+    if (highlightedUnsupportedRef.current) {
+      highlightedUnsupportedRef.current.classList.remove(UNSUPPORTED_HIGHLIGHT_CLASS)
+      highlightedUnsupportedRef.current = null
     }
+    if (highlightedOpenPathRef.current) {
+      highlightedOpenPathRef.current.classList.remove(OPEN_PATH_HIGHLIGHT_CLASS)
+      highlightedOpenPathRef.current = null
+    }
+    if (!rootSvg) return
 
     if (highlightedUnsupportedId) {
       const target = findUnsupportedElementById(rootSvg, highlightedUnsupportedId)
       if (target) {
-        try {
-          const b = target.getBBox()
-          setUnsupportedHighlightBox({ x: b.x, y: b.y, width: b.width, height: b.height })
-        } catch {
-          setUnsupportedHighlightBox(null)
-        }
-      } else {
-        setUnsupportedHighlightBox(null)
+        target.classList.add(UNSUPPORTED_HIGHLIGHT_CLASS)
+        highlightedUnsupportedRef.current = target
       }
-    } else {
-      setUnsupportedHighlightBox(null)
     }
-
     if (highlightedOpenPathId) {
       const target = findOpenPathElementById(rootSvg, highlightedOpenPathId)
       if (target) {
-        setOpenPathHighlightD(target.getAttribute('d'))
-      } else {
-        setOpenPathHighlightD(null)
+        target.classList.add(OPEN_PATH_HIGHLIGHT_CLASS)
+        highlightedOpenPathRef.current = target
       }
-    } else {
-      setOpenPathHighlightD(null)
     }
   }, [processedSvg, highlightedUnsupportedId, highlightedOpenPathId])
 
@@ -396,42 +401,6 @@ export default function SvgViewer({
                 vectorEffect="non-scaling-stroke"
               />
             ))}
-          </svg>
-        )}
-
-        {/* Overlay SVG for unsupported/open-path highlights */}
-        {containerSize.width > 0 && viewBox && (unsupportedHighlightBox || openPathHighlightD) && (
-          <svg
-            className="absolute inset-0 pointer-events-none"
-            width={containerSize.width}
-            height={containerSize.height}
-            viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
-            preserveAspectRatio="xMidYMid meet"
-          >
-            {unsupportedHighlightBox && (
-              <rect
-                x={unsupportedHighlightBox.x}
-                y={unsupportedHighlightBox.y}
-                width={Math.max(unsupportedHighlightBox.width, 1)}
-                height={Math.max(unsupportedHighlightBox.height, 1)}
-                fill={UNSUPPORTED_HIGHLIGHT_COLOR}
-                fillOpacity={0.12}
-                stroke={UNSUPPORTED_HIGHLIGHT_COLOR}
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
-            )}
-            {openPathHighlightD && (
-              <path
-                d={openPathHighlightD}
-                fill="none"
-                stroke={OPEN_PATH_HIGHLIGHT_COLOR}
-                strokeWidth={3}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            )}
           </svg>
         )}
 
