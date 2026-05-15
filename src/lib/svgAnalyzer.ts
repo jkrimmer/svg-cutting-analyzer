@@ -257,7 +257,6 @@ function collectInvisibleElements(svgText: string): InvisibleElement[] {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml')
   const invisibleElements: InvisibleElement[] = []
   const tagCounters: Record<string, number> = {}
-  let hiddenPathCounter = 0
 
   function walk(el: Element, hiddenByAncestor: boolean): void {
     const tag = el.tagName.toLowerCase()
@@ -273,9 +272,9 @@ function collectInvisibleElements(svgText: string): InvisibleElement[] {
         const id = explicitId || `${tag}-${tagCounters[tag]}`
         invisibleElements.push({ id, tagName: tag })
       } else if (tag === 'path') {
-        hiddenPathCounter++
+        tagCounters.path = (tagCounters.path ?? 0) + 1
         const explicitId = el.getAttribute('id')?.trim()
-        const id = explicitId || `path-${hiddenPathCounter}`
+        const id = explicitId || `path-${tagCounters.path}`
         invisibleElements.push({ id, tagName: 'path' })
       }
     }

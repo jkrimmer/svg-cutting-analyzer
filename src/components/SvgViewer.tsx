@@ -183,7 +183,6 @@ function findOpenPathElementById(rootSvg: SVGSVGElement, label: string): SVGPath
 
 function findInvisibleElementById(rootSvg: SVGSVGElement, label: string): SVGGraphicsElement | null {
   const tagCounters: Record<string, number> = {}
-  let hiddenPathCounter = 0
   let found: SVGGraphicsElement | null = null
 
   function walk(el: Element, hiddenByAncestor: boolean): void {
@@ -204,9 +203,9 @@ function findInvisibleElementById(rootSvg: SVGSVGElement, label: string): SVGGra
           return
         }
       } else if (tag === 'path') {
-        hiddenPathCounter++
+        tagCounters.path = (tagCounters.path ?? 0) + 1
         const explicitId = el.getAttribute('id')?.trim()
-        const computedId = explicitId || `path-${hiddenPathCounter}`
+        const computedId = explicitId || `path-${tagCounters.path}`
         if (computedId === label && el instanceof SVGGraphicsElement) {
           found = el
           return
