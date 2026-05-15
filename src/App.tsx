@@ -38,6 +38,7 @@ export default function App() {
   const [highlightedOpenPathId, setHighlightedOpenPathId] = useState<string | null>(null)
   const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
   const [outlineMode, setOutlineMode] = useState<boolean>(true)
+  const [outlineStrokeWidth, setOutlineStrokeWidth] = useState<number>(1)
   const [cuttingVelocity, setCuttingVelocity] = useState<number>(50)
 
   const runAnalysis = useCallback((text: string, clipPaths: boolean) => {
@@ -225,6 +226,25 @@ export default function App() {
                 />
                 Outline mode
               </label>
+              {outlineMode && (
+                <>
+                  <span className="text-gray-300">|</span>
+                  <label className="flex items-center gap-2 text-sm text-gray-500 select-none">
+                    Stroke width:
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={outlineStrokeWidth}
+                      onChange={(e) => {
+                        const parsed = Number(e.target.value)
+                        if (!isNaN(parsed)) setOutlineStrokeWidth(Math.max(0.1, parsed))
+                      }}
+                      className="w-16 border border-gray-300 rounded px-2 py-0.5 text-sm text-gray-800"
+                    />
+                  </label>
+                </>
+              )}
             </div>
 
             {/* Viewer + Table side by side on large screens */}
@@ -239,6 +259,7 @@ export default function App() {
                     highlightedUnsupportedId={highlightedUnsupportedId}
                     highlightedOpenPathId={highlightedOpenPathId}
                     outlineMode={outlineMode}
+                    outlineStrokeWidth={outlineStrokeWidth}
                     clipPathShapes={result.clipPathShapes}
                   />
                 </div>
