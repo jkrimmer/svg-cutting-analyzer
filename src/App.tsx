@@ -36,8 +36,10 @@ export default function App() {
   const [highlightedPair, setHighlightedPair] = useState<[number, number] | null>(null)
   const [highlightedUnsupportedId, setHighlightedUnsupportedId] = useState<string | null>(null)
   const [highlightedOpenPathId, setHighlightedOpenPathId] = useState<string | null>(null)
+  const [highlightedInvisibleId, setHighlightedInvisibleId] = useState<string | null>(null)
   const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
   const [outlineMode, setOutlineMode] = useState<boolean>(true)
+  const [overwriteStrokeOpacity, setOverwriteStrokeOpacity] = useState<boolean>(true)
   const [outlineStrokeWidth, setOutlineStrokeWidth] = useState<number>(1)
   const [cuttingVelocity, setCuttingVelocity] = useState<number>(50)
 
@@ -46,6 +48,7 @@ export default function App() {
     setHighlightedPair(null)
     setHighlightedUnsupportedId(null)
     setHighlightedOpenPathId(null)
+    setHighlightedInvisibleId(null)
     setStatus('analyzing')
     setErrorMsg('')
 
@@ -84,6 +87,7 @@ export default function App() {
     setHighlightedPair(null)
     setHighlightedUnsupportedId(null)
     setHighlightedOpenPathId(null)
+    setHighlightedInvisibleId(null)
     setCuttingVelocity(50)
   }
 
@@ -226,6 +230,16 @@ export default function App() {
                 />
                 Outline mode
               </label>
+              <span className="text-gray-300">|</span>
+              <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={overwriteStrokeOpacity}
+                  onChange={(e) => setOverwriteStrokeOpacity(e.target.checked)}
+                  className="w-4 h-4 accent-blue-600 cursor-pointer"
+                />
+                Overwrite stroke opacity
+              </label>
               {outlineMode && (
                 <>
                   <span className="text-gray-300">|</span>
@@ -258,6 +272,8 @@ export default function App() {
                     highlightedPair={highlightedPair}
                     highlightedUnsupportedId={highlightedUnsupportedId}
                     highlightedOpenPathId={highlightedOpenPathId}
+                    highlightedInvisibleId={highlightedInvisibleId}
+                    overwriteStrokeOpacity={overwriteStrokeOpacity}
                     outlineMode={outlineMode}
                     outlineStrokeWidth={outlineStrokeWidth}
                     clipPathShapes={result.clipPathShapes}
@@ -290,10 +306,13 @@ export default function App() {
                 <UnsupportedList
                   unsupportedElements={result.unsupportedElements}
                   openPaths={result.openPaths}
+                  invisibleElements={result.invisibleElements}
                   highlightedUnsupportedId={highlightedUnsupportedId}
                   highlightedOpenPathId={highlightedOpenPathId}
+                  highlightedInvisibleId={highlightedInvisibleId}
                   onUnsupportedHover={setHighlightedUnsupportedId}
                   onOpenPathHover={setHighlightedOpenPathId}
+                  onInvisibleHover={setHighlightedInvisibleId}
                 />
             </div>
           </div>

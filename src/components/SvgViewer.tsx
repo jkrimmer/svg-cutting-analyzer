@@ -7,6 +7,8 @@ interface Props {
   highlightedPair: [number, number] | null
   highlightedUnsupportedId: string | null
   highlightedOpenPathId: string | null
+  highlightedInvisibleId: string | null
+  overwriteStrokeOpacity?: boolean
   outlineMode?: boolean
   outlineStrokeWidth?: number
   clipPathShapes?: ClipPathShape[]
@@ -27,11 +29,14 @@ interface Transform {
 const INITIAL_TRANSFORM: Transform = { zoom: 1, pan: { x: 0, y: 0 } }
 const UNSUPPORTED_HIGHLIGHT_COLOR = '#7c3aed'
 const OPEN_PATH_HIGHLIGHT_COLOR = '#0891b2'
+const INVISIBLE_HIGHLIGHT_COLOR = '#e11d48'
 const UNSUPPORTED_HIGHLIGHT_CLASS = '__sca-unsupported-highlight'
 const OPEN_PATH_HIGHLIGHT_CLASS = '__sca-open-path-highlight'
+const INVISIBLE_HIGHLIGHT_CLASS = '__sca-invisible-highlight'
 
 const OUTLINE_STYLE = (strokeWidth: number) =>
   `<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: ${strokeWidth} !important; }</style>`
+const OVERWRITE_STROKE_OPACITY_STYLE = '<style>path { stroke-opacity: 1 !important; }</style>'
 const HOVER_HIGHLIGHT_STYLE = `<style>
 .${UNSUPPORTED_HIGHLIGHT_CLASS} {
   stroke: ${UNSUPPORTED_HIGHLIGHT_COLOR} !important;
@@ -47,6 +52,15 @@ const HOVER_HIGHLIGHT_STYLE = `<style>
   stroke-linejoin: round !important;
   fill: none !important;
   filter: drop-shadow(0 0 2px ${OPEN_PATH_HIGHLIGHT_COLOR});
+}
+.${INVISIBLE_HIGHLIGHT_CLASS} {
+  display: inline !important;
+  visibility: visible !important;
+  stroke: ${INVISIBLE_HIGHLIGHT_COLOR} !important;
+  stroke-width: 2 !important;
+  fill: ${INVISIBLE_HIGHLIGHT_COLOR} !important;
+  fill-opacity: 0.22 !important;
+  filter: drop-shadow(0 0 2px ${INVISIBLE_HIGHLIGHT_COLOR});
 }
 </style>`
 const SKIP_SUBTREE_TAGS = new Set([
@@ -169,12 +183,94 @@ function findOpenPathElementById(rootSvg: SVGSVGElement, label: string): SVGPath
   return found
 }
 
+function findInvisibleElementById(rootSvg: SVGSVGElement, label: string): SVGGraphicsElement | null {
+  const tagCounters: Record<string, number> = {}
+  let found: SVGGraphicsElement | null = null
+
+  function walk(el: Element, hiddenByAncestor: boolean): void {
+    if (found) return
+    const tag = el.tagName.toLowerCase()
+    if (SKIP_SUBTREE_TAGS.has(tag)) return
+
+    const hiddenSelf = isCurrentElementHidden(el)
+    const isHidden = hiddenByAncestor || hiddenSelf
+
+    if (isHidden) {
+      if (GRAPHICAL_TAGS_NON_PATH.has(tag)) {
+        tagCounters[tag] = (tagCounters[tag] ?? 0) + 1
+        const explicitId = el.getAttribute('id')?.trim()
+        const computedId = explicitId || `${tag}-${tagCounters[tag]}`
+        if (computedId === label && el instanceof SVGGraphicsElement) {
+          found = el
+          return
+        }
+      } else if (tag === 'path') {
+        tagCounters.path = (tagCounters.path ?? 0) + 1
+        const explicitId = el.getAttribute('id')?.trim()
+        const computedId = explicitId || `path-${tagCounters.path}`
+        if (computedId === label && el instanceof SVGGraphicsElement) {
+          found = el
+          return
+        }
+      }
+    }
+
+    for (const child of Array.from(el.children)) {
+      walk(child, isHidden)
+    }
+  }
+
+  walk(rootSvg, false)
+  return found
+}
+
+function computeInvisibleHighlightPoint(
+  target: SVGGraphicsElement,
+  rootSvg: SVGSVGElement,
+): { x: number; y: number } | null {
+  const hiddenElements: SVGElement[] = []
+  let current: Element | null = target
+  while (current && current instanceof SVGElement) {
+    if (isCurrentElementHidden(current)) {
+      hiddenElements.push(current)
+    }
+    if (current === rootSvg) break
+    current = current.parentElement
+  }
+
+  const originalStyles = hiddenElements.map((el) => ({
+    el,
+    display: el.style.display,
+    visibility: el.style.visibility,
+  }))
+
+  for (const entry of originalStyles) {
+    entry.el.style.display = 'inline'
+    entry.el.style.visibility = 'visible'
+  }
+
+  try {
+    const bbox = target.getBBox()
+    if (!Number.isFinite(bbox.x) || !Number.isFinite(bbox.y)) return null
+    return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 }
+  } catch {
+    return null
+  } finally {
+    for (const entry of originalStyles) {
+      entry.el.style.display = entry.display
+      entry.el.style.visibility = entry.visibility
+    }
+  }
+}
+
 export default function SvgViewer({
   svgText,
   overlaps,
   highlightedPair,
   highlightedUnsupportedId,
   highlightedOpenPathId,
+  highlightedInvisibleId,
+  overwriteStrokeOpacity = true,
   outlineMode = false,
   outlineStrokeWidth = 1,
   clipPathShapes,
@@ -187,6 +283,8 @@ export default function SvgViewer({
   const [isPanning, setIsPanning] = useState(false)
   const highlightedUnsupportedRef = useRef<SVGGraphicsElement | null>(null)
   const highlightedOpenPathRef = useRef<SVGPathElement | null>(null)
+  const highlightedInvisibleRef = useRef<SVGGraphicsElement | null>(null)
+  const [highlightedInvisiblePoint, setHighlightedInvisiblePoint] = useState<{ x: number; y: number } | null>(null)
   const panStart = useRef<{ mouseX: number; mouseY: number; panX: number; panY: number } | null>(null)
 
   // Keep transformRef in sync with state so the wheel handler (closed over once) always sees fresh values
@@ -307,9 +405,15 @@ export default function SvgViewer({
   const svgWithViewBox = ensureViewBox(svgText)
 
   // Step 2: in outline mode inject a <style> block that strips fills and shows strokes only
+  const injectedStyles = [
+    overwriteStrokeOpacity ? OVERWRITE_STROKE_OPACITY_STYLE : '',
+    outlineMode ? OUTLINE_STYLE(outlineStrokeWidth) : '',
+    HOVER_HIGHLIGHT_STYLE,
+  ].filter(Boolean).join('')
+
   const processedSvg = svgWithViewBox.replace(
     /(<svg\b[^>]*>)/,
-    `$1${outlineMode ? OUTLINE_STYLE(outlineStrokeWidth) : ''}${HOVER_HIGHLIGHT_STYLE}`,
+    `$1${injectedStyles}`,
   )
 
   useEffect(() => {
@@ -322,6 +426,11 @@ export default function SvgViewer({
       highlightedOpenPathRef.current.classList.remove(OPEN_PATH_HIGHLIGHT_CLASS)
       highlightedOpenPathRef.current = null
     }
+    if (highlightedInvisibleRef.current) {
+      highlightedInvisibleRef.current.classList.remove(INVISIBLE_HIGHLIGHT_CLASS)
+      highlightedInvisibleRef.current = null
+    }
+    setHighlightedInvisiblePoint(null)
     if (!rootSvg) return
 
     if (highlightedUnsupportedId) {
@@ -338,7 +447,15 @@ export default function SvgViewer({
         highlightedOpenPathRef.current = target
       }
     }
-  }, [processedSvg, highlightedUnsupportedId, highlightedOpenPathId])
+    if (highlightedInvisibleId) {
+      const target = findInvisibleElementById(rootSvg, highlightedInvisibleId)
+      if (target) {
+        target.classList.add(INVISIBLE_HIGHLIGHT_CLASS)
+        highlightedInvisibleRef.current = target
+        setHighlightedInvisiblePoint(computeInvisibleHighlightPoint(target, rootSvg))
+      }
+    }
+  }, [processedSvg, highlightedUnsupportedId, highlightedOpenPathId, highlightedInvisibleId])
 
   // Collect highlighted intersection points
   const highlightedPoints =
@@ -434,6 +551,29 @@ export default function SvgViewer({
                 )
               }),
             )}
+            {highlightedInvisiblePoint && (() => {
+              const { px, py } = toPixel(highlightedInvisiblePoint.x, highlightedInvisiblePoint.y)
+              return (
+                <g>
+                  <circle
+                    cx={px}
+                    cy={py}
+                    r={9}
+                    fill="none"
+                    stroke={INVISIBLE_HIGHLIGHT_COLOR}
+                    strokeWidth={2}
+                    strokeOpacity={0.9}
+                  />
+                  <circle
+                    cx={px}
+                    cy={py}
+                    r={4}
+                    fill={INVISIBLE_HIGHLIGHT_COLOR}
+                    fillOpacity={0.9}
+                  />
+                </g>
+              )
+            })()}
           </svg>
         )}
       </div>

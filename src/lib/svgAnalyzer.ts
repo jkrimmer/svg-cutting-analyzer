@@ -34,6 +34,17 @@ export interface OpenPath {
   id: string
 }
 
+/**
+ * A graphical SVG element that is invisible because it (or an ancestor) is
+ * hidden via `display:none` or `visibility:hidden`.
+ */
+export interface InvisibleElement {
+  /** Element's `id` attribute, or an auto-generated label like `"circle-1"`. */
+  id: string
+  /** Lower-cased SVG tag name, e.g. `"circle"`, `"path"`, `"rect"`. */
+  tagName: string
+}
+
 export interface AnalysisResult {
   totalShapes: number
   overlaps: OverlapEntry[]
@@ -50,6 +61,8 @@ export interface AnalysisResult {
   unsupportedElements: UnsupportedElement[]
   /** `<path>` elements that contain at least one open (unclosed) sub-path. */
   openPaths: OpenPath[]
+  /** Graphical elements that are invisible due to hidden display/visibility. */
+  invisibleElements: InvisibleElement[]
 }
 
 export interface AnalysisOptions {
@@ -236,6 +249,45 @@ function collectOpenPaths(svgText: string): OpenPath[] {
   return openPaths
 }
 
+/**
+ * Walks the parsed SVG DOM and returns graphical elements that are invisible
+ * because the element itself or one of its ancestors is hidden.
+ */
+function collectInvisibleElements(svgText: string): InvisibleElement[] {
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml')
+  const invisibleElements: InvisibleElement[] = []
+  const tagCounters: Record<string, number> = {}
+
+  function walk(el: Element, hiddenByAncestor: boolean): void {
+    const tag = el.tagName.toLowerCase()
+    if (SKIP_SUBTREE_TAGS.has(tag)) return
+
+    const hiddenSelf = isCurrentElementHidden(el)
+    const isHidden = hiddenByAncestor || hiddenSelf
+
+    if (isHidden) {
+      if (GRAPHICAL_TAGS_NON_PATH.has(tag)) {
+        tagCounters[tag] = (tagCounters[tag] ?? 0) + 1
+        const explicitId = el.getAttribute('id')?.trim()
+        const id = explicitId || `${tag}-${tagCounters[tag]}`
+        invisibleElements.push({ id, tagName: tag })
+      } else if (tag === 'path') {
+        tagCounters.path = (tagCounters.path ?? 0) + 1
+        const explicitId = el.getAttribute('id')?.trim()
+        const id = explicitId || `path-${tagCounters.path}`
+        invisibleElements.push({ id, tagName: 'path' })
+      }
+    }
+
+    for (const child of Array.from(el.children)) {
+      walk(child, isHidden)
+    }
+  }
+
+  walk(doc.documentElement, false)
+  return invisibleElements
+}
+
 function shapeLabel(item: paper.PathItem, index: number): string {
   if (item.name && item.name.trim() !== '') return item.name.trim()
   const dataId = (item as unknown as { data?: { id?: string } }).data?.id
@@ -282,6 +334,7 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
 
   const unsupportedElements = collectUnsupportedElements(svgText)
   const openPaths = collectOpenPaths(svgText)
+  const invisibleElements = collectInvisibleElements(svgText)
 
   const canvas = document.createElement('canvas')
   const scope = new paper.PaperScope()
@@ -347,6 +400,7 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
       totalOutlineLength: 0,
       unsupportedElements,
       openPaths,
+      invisibleElements,
     }
   }
 
@@ -460,5 +514,6 @@ export function analyzeSVG(svgText: string, options: AnalysisOptions = {}): Anal
     clipPathShapes,
     unsupportedElements,
     openPaths,
+    invisibleElements,
   }
 }

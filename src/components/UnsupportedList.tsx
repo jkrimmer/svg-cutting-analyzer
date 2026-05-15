@@ -1,12 +1,15 @@
-import type { OpenPath, UnsupportedElement } from '../lib/svgAnalyzer'
+import type { InvisibleElement, OpenPath, UnsupportedElement } from '../lib/svgAnalyzer'
 
 interface Props {
   unsupportedElements: UnsupportedElement[]
   openPaths: OpenPath[]
+  invisibleElements: InvisibleElement[]
   highlightedUnsupportedId: string | null
   highlightedOpenPathId: string | null
+  highlightedInvisibleId: string | null
   onUnsupportedHover: (id: string | null) => void
   onOpenPathHover: (id: string | null) => void
+  onInvisibleHover: (id: string | null) => void
 }
 
 function OkBadge({ label }: { label: string }) {
@@ -23,10 +26,13 @@ function OkBadge({ label }: { label: string }) {
 export default function UnsupportedList({
   unsupportedElements,
   openPaths,
+  invisibleElements,
   highlightedUnsupportedId,
   highlightedOpenPathId,
+  highlightedInvisibleId,
   onUnsupportedHover,
   onOpenPathHover,
+  onInvisibleHover,
 }: Props) {
   return (
     <div className="flex flex-col gap-6">
@@ -116,6 +122,57 @@ export default function UnsupportedList({
                   >
                     <td className={`py-2 px-3 ${isHighlighted ? 'text-cyan-500' : 'text-gray-400'}`}>{idx + 1}</td>
                     <td className="py-2 px-3 font-mono text-gray-800">{p.id}</td>
+                  </tr>
+                )})}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Invisible items */}
+      <div>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Invisible items
+          {invisibleElements.length > 0 && (
+            <span className="ml-2 text-gray-400 normal-case font-normal text-xs">
+              (hover a row to highlight)
+            </span>
+          )}
+        </h3>
+        {invisibleElements.length === 0 ? (
+          <OkBadge label="No invisible items detected" />
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 px-3 text-gray-500 font-semibold w-10">#</th>
+                  <th className="text-left py-2 px-3 text-gray-500 font-semibold">Tag</th>
+                  <th className="text-left py-2 px-3 text-gray-500 font-semibold">ID / Label</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invisibleElements.map((el, idx) => {
+                  const isHighlighted = highlightedInvisibleId === el.id
+                  return (
+                  <tr
+                    key={`${el.tagName}-${el.id}-${idx}`}
+                    className={`border-b border-gray-100 cursor-default transition-colors ${
+                      isHighlighted ? 'bg-rose-50' : 'hover:bg-gray-50'
+                    }`}
+                    onMouseEnter={() => onInvisibleHover(el.id)}
+                    onMouseLeave={() => onInvisibleHover(null)}
+                  >
+                    <td className={`py-2 px-3 ${isHighlighted ? 'text-rose-500' : 'text-gray-400'}`}>{idx + 1}</td>
+                    <td className="py-2 px-3">
+                      <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold font-mono ${
+                        isHighlighted ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        &lt;{el.tagName}&gt;
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 font-mono text-gray-800">{el.id}</td>
                   </tr>
                 )})}
               </tbody>

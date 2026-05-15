@@ -374,7 +374,40 @@ describe('unsupportedElements — hidden elements are excluded', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 20. openPaths: open <path> elements are detected
+// 20. invisibleElements: hidden elements are listed
+// ---------------------------------------------------------------------------
+describe('invisibleElements — hidden graphical elements are listed', () => {
+  it('flags elements hidden by display/visibility and keeps visible ones out', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <circle id="hidden-circle" cx="50" cy="50" r="20" display="none"/>
+      <path id="hidden-path" d="M 0,0 L 50,50 Z" visibility="hidden"/>
+      <rect id="visible-rect" x="10" y="10" width="30" height="30"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.invisibleElements).toEqual([
+      { id: 'hidden-circle', tagName: 'circle' },
+      { id: 'hidden-path', tagName: 'path' },
+    ])
+  })
+
+  it('flags graphical descendants inside hidden groups with generated ids', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <g display="none">
+        <circle cx="50" cy="50" r="20"/>
+        <path d="M 0,0 L 30,0 Z"/>
+      </g>
+      <circle cx="150" cy="150" r="10"/>
+    </svg>`
+    const result = analyzeSVG(svg)
+    expect(result.invisibleElements).toEqual([
+      { id: 'circle-1', tagName: 'circle' },
+      { id: 'path-1', tagName: 'path' },
+    ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 21. openPaths: open <path> elements are detected
 // ---------------------------------------------------------------------------
 describe('openPaths — open path elements are listed', () => {
   it('flags a <path> with no Z command', () => {
@@ -397,7 +430,7 @@ describe('openPaths — open path elements are listed', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 21. openPaths: closed <path> elements are NOT flagged
+// 22. openPaths: closed <path> elements are NOT flagged
 // ---------------------------------------------------------------------------
 describe('openPaths — closed path elements are not flagged', () => {
   it('returns [] for a <path> that ends with Z', () => {
@@ -410,7 +443,7 @@ describe('openPaths — closed path elements are not flagged', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 22. openPaths: compound path with an open sub-path is flagged
+// 23. openPaths: compound path with an open sub-path is flagged
 // ---------------------------------------------------------------------------
 describe('openPaths — compound path with open sub-path', () => {
   it('flags a <path> whose second sub-path is not closed', () => {
@@ -432,7 +465,7 @@ describe('openPaths — compound path with open sub-path', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 23. <polygon> appears in unsupportedElements but NOT in openPaths
+// 24. <polygon> appears in unsupportedElements but NOT in openPaths
 // ---------------------------------------------------------------------------
 describe('<polygon> is flagged as unsupported but not as open path', () => {
   it('polygon is in unsupportedElements and openPaths is empty', () => {
@@ -447,12 +480,13 @@ describe('<polygon> is flagged as unsupported but not as open path', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 24. Empty SVG: both new lists are empty arrays
+// 25. Empty SVG: all diagnostic lists are empty arrays
 // ---------------------------------------------------------------------------
 describe('empty SVG — unsupportedElements and openPaths are empty', () => {
-  it('returns empty arrays for both diagnostic lists', () => {
+  it('returns empty arrays for all diagnostic lists', () => {
     const result = analyzeSVG('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
     expect(result.unsupportedElements).toEqual([])
     expect(result.openPaths).toEqual([])
+    expect(result.invisibleElements).toEqual([])
   })
 })
