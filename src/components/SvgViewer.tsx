@@ -409,7 +409,7 @@ export default function SvgViewer({
     overwritePathOpacity ? OVERWRITE_PATH_OPACITY_STYLE : '',
     outlineMode ? OUTLINE_STYLE(outlineStrokeWidth) : '',
     HOVER_HIGHLIGHT_STYLE,
-  ].join('')
+  ].filter(Boolean).join('')
 
   const processedSvg = svgWithViewBox.replace(
     /(<svg\b[^>]*>)/,
