@@ -39,6 +39,7 @@ export default function App() {
   const [highlightedInvisibleId, setHighlightedInvisibleId] = useState<string | null>(null)
   const [considerClipPaths, setConsiderClipPaths] = useState<boolean>(false)
   const [outlineMode, setOutlineMode] = useState<boolean>(true)
+  const [overwritePathOpacity, setOverwritePathOpacity] = useState<boolean>(true)
   const [outlineStrokeWidth, setOutlineStrokeWidth] = useState<number>(1)
   const [cuttingVelocity, setCuttingVelocity] = useState<number>(50)
 
@@ -229,6 +230,16 @@ export default function App() {
                 />
                 Outline mode
               </label>
+              <span className="text-gray-300">|</span>
+              <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={overwritePathOpacity}
+                  onChange={(e) => setOverwritePathOpacity(e.target.checked)}
+                  className="w-4 h-4 accent-blue-600 cursor-pointer"
+                />
+                Overwrite path opacity
+              </label>
               {outlineMode && (
                 <>
                   <span className="text-gray-300">|</span>
@@ -262,6 +273,7 @@ export default function App() {
                     highlightedUnsupportedId={highlightedUnsupportedId}
                     highlightedOpenPathId={highlightedOpenPathId}
                     highlightedInvisibleId={highlightedInvisibleId}
+                    overwritePathOpacity={overwritePathOpacity}
                     outlineMode={outlineMode}
                     outlineStrokeWidth={outlineStrokeWidth}
                     clipPathShapes={result.clipPathShapes}
