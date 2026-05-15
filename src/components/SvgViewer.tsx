@@ -405,9 +405,15 @@ export default function SvgViewer({
   const svgWithViewBox = ensureViewBox(svgText)
 
   // Step 2: in outline mode inject a <style> block that strips fills and shows strokes only
+  const injectedStyles = [
+    overwritePathOpacity ? OVERWRITE_PATH_OPACITY_STYLE : '',
+    outlineMode ? OUTLINE_STYLE(outlineStrokeWidth) : '',
+    HOVER_HIGHLIGHT_STYLE,
+  ].join('')
+
   const processedSvg = svgWithViewBox.replace(
     /(<svg\b[^>]*>)/,
-    `$1${overwritePathOpacity ? OVERWRITE_PATH_OPACITY_STYLE : ''}${outlineMode ? OUTLINE_STYLE(outlineStrokeWidth) : ''}${HOVER_HIGHLIGHT_STYLE}`,
+    `$1${injectedStyles}`,
   )
 
   useEffect(() => {
