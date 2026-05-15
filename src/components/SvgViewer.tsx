@@ -8,6 +8,7 @@ interface Props {
   highlightedUnsupportedId: string | null
   highlightedOpenPathId: string | null
   outlineMode?: boolean
+  outlineStrokeWidth?: number
   clipPathShapes?: ClipPathShape[]
 }
 
@@ -29,7 +30,8 @@ const OPEN_PATH_HIGHLIGHT_COLOR = '#0891b2'
 const UNSUPPORTED_HIGHLIGHT_CLASS = '__sca-unsupported-highlight'
 const OPEN_PATH_HIGHLIGHT_CLASS = '__sca-open-path-highlight'
 
-const OUTLINE_STYLE = '<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: 1 !important; }</style>'
+const OUTLINE_STYLE = (strokeWidth: number) =>
+  `<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: ${strokeWidth} !important; }</style>`
 const HOVER_HIGHLIGHT_STYLE = `<style>
 .${UNSUPPORTED_HIGHLIGHT_CLASS} {
   stroke: ${UNSUPPORTED_HIGHLIGHT_COLOR} !important;
@@ -174,6 +176,7 @@ export default function SvgViewer({
   highlightedUnsupportedId,
   highlightedOpenPathId,
   outlineMode = false,
+  outlineStrokeWidth = 1,
   clipPathShapes,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -306,7 +309,7 @@ export default function SvgViewer({
   // Step 2: in outline mode inject a <style> block that strips fills and shows strokes only
   const processedSvg = svgWithViewBox.replace(
     /(<svg\b[^>]*>)/,
-    `$1${outlineMode ? OUTLINE_STYLE : ''}${HOVER_HIGHLIGHT_STYLE}`,
+    `$1${outlineMode ? OUTLINE_STYLE(outlineStrokeWidth) : ''}${HOVER_HIGHLIGHT_STYLE}`,
   )
 
   useEffect(() => {
