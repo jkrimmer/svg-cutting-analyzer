@@ -8,7 +8,7 @@ interface Props {
   highlightedUnsupportedId: string | null
   highlightedOpenPathId: string | null
   highlightedInvisibleId: string | null
-  overwritePathOpacity?: boolean
+  overwriteStrokeOpacity?: boolean
   outlineMode?: boolean
   outlineStrokeWidth?: number
   clipPathShapes?: ClipPathShape[]
@@ -36,7 +36,7 @@ const INVISIBLE_HIGHLIGHT_CLASS = '__sca-invisible-highlight'
 
 const OUTLINE_STYLE = (strokeWidth: number) =>
   `<style>path, circle, ellipse, rect, polygon, polyline, line, use { fill: none !important; stroke: #374151 !important; stroke-width: ${strokeWidth} !important; }</style>`
-const OVERWRITE_PATH_OPACITY_STYLE = '<style>path { opacity: 1 !important; }</style>'
+const OVERWRITE_STROKE_OPACITY_STYLE = '<style>path { stroke-opacity: 1 !important; }</style>'
 const HOVER_HIGHLIGHT_STYLE = `<style>
 .${UNSUPPORTED_HIGHLIGHT_CLASS} {
   stroke: ${UNSUPPORTED_HIGHLIGHT_COLOR} !important;
@@ -270,7 +270,7 @@ export default function SvgViewer({
   highlightedUnsupportedId,
   highlightedOpenPathId,
   highlightedInvisibleId,
-  overwritePathOpacity = true,
+  overwriteStrokeOpacity = true,
   outlineMode = false,
   outlineStrokeWidth = 1,
   clipPathShapes,
@@ -406,7 +406,7 @@ export default function SvgViewer({
 
   // Step 2: in outline mode inject a <style> block that strips fills and shows strokes only
   const injectedStyles = [
-    overwritePathOpacity ? OVERWRITE_PATH_OPACITY_STYLE : '',
+    overwriteStrokeOpacity ? OVERWRITE_STROKE_OPACITY_STYLE : '',
     outlineMode ? OUTLINE_STYLE(outlineStrokeWidth) : '',
     HOVER_HIGHLIGHT_STYLE,
   ].filter(Boolean).join('')

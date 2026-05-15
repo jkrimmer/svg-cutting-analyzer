@@ -46,7 +46,7 @@ Then open **http://localhost:5173** in your browser.
    - **Populated width / height** — the bounding box of all shapes in millimetres, with a warning when both dimensions exceed the 460 mm machine bed limit.
    - **Total outline length** — the sum of all path lengths in millimetres.
    - **Estimated cutting time** — enter your plotter's cutting velocity (mm/s) to get a time estimate.
-   - **Live SVG preview** — with red dots at every intersection point; toggle *Outline mode* to see bare outlines without fills and use *Overwrite path opacity* (enabled by default) to force path opacity to `1`.
+   - **Live SVG preview** — with red dots at every intersection point; toggle *Outline mode* to see bare outlines without fills and use *Overwrite stroke opacity* (enabled by default) to force path stroke opacity to `1`.
    - **Overlapping pairs table** — every pair of shapes whose outlines intersect; hover a row to highlight that pair's intersections in amber.
 3. Use the **Consider clip paths** toggle to restrict overlap detection to the visually visible (non-clipped) region of each shape. Clip regions are then shown in the preview.
 
